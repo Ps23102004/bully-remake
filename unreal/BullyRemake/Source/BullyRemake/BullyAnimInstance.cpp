@@ -10,6 +10,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Misc/PackageName.h"
 #include "ReferenceSkeleton.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogBullyAnim, Log, All);
@@ -165,6 +166,19 @@ void UBullyAnimInstance::NativeInitializeAnimation()
 	Super::NativeInitializeAnimation();
 	if (Clips.Num() == 0)
 	{
+		// Milestone 4: every imported ped has its own skeleton and clips next to its mesh
+		// (/Game/Imported/Characters/<Name>/SK_<Name> -> .../<Name>/Anims). Jimmy resolves to the default ClipRoot.
+		if (const USkeletalMeshComponent* SMC0 = GetSkelMeshComponent())
+		{
+			if (const USkeletalMesh* SK0 = SMC0->GetSkeletalMeshAsset())
+			{
+				const FString Pkg = SK0->GetOutermost()->GetName();
+				if (Pkg.StartsWith(TEXT("/Game/Imported/Characters/")))
+				{
+					ClipRoot = FPackageName::GetLongPackagePath(Pkg) + TEXT("/Anims");
+				}
+			}
+		}
 		LoadClips();
 	}
 	// Root (pelvis carrier) reference translation: its largest component is the up axis in bone space.

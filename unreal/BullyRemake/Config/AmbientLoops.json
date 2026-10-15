@@ -1,0 +1,311 @@
+{
+ "format": "bully-remake.ambient/1",
+ "_note": "Milestone 4 signs of life: fixed waypoint loops only (no schedules, no AI). UE cm (game metres x 100, y mirrored). Edited by hand; validated at runtime (BR_AMBIENT lines). Audio entries name decoded game sounds (python3 -m tools.importers audio extract); the repo ships no audio.",
+ "students": [
+  {
+   "id": "boy01",
+   "model": "GN_Boy01",
+   "footsteps": "shoe"
+  },
+  {
+   "id": "boy02",
+   "model": "GN_Boy02",
+   "footsteps": "shoe"
+  },
+  {
+   "id": "asiangirl",
+   "model": "GN_Asiangirl",
+   "footsteps": "female"
+  },
+  {
+   "id": "greekboy",
+   "model": "GN_Greekboy",
+   "footsteps": "shoe"
+  },
+  {
+   "id": "nerd_bucky",
+   "model": "NDH3_Bucky",
+   "footsteps": "shoe"
+  },
+  {
+   "id": "prefect_seth",
+   "model": "PFH1_Seth",
+   "footsteps": "shoe"
+  }
+ ],
+ "footsteps": {
+  "player": [
+   {
+    "bank": "FeetAll",
+    "name": "Sneaker Walk Cemnt_03"
+   },
+   {
+    "bank": "FeetAll",
+    "name": "Sneaker Walk Cemnt_04"
+   },
+   {
+    "bank": "FeetAll",
+    "name": "Sneaker Walk Cemnt_06"
+   },
+   {
+    "bank": "FeetAll",
+    "name": "Sneaker Walk Cemnt_08"
+   }
+  ],
+  "shoe": [
+   {
+    "bank": "FeetAll",
+    "name": "Shoe_Cement_04_8va14k"
+   },
+   {
+    "bank": "FeetAll",
+    "name": "Shoe_Cement_05_8va14k"
+   },
+   {
+    "bank": "FeetAll",
+    "name": "Shoe_Cement_06_8va14k"
+   }
+  ],
+  "female": [
+   {
+    "bank": "FeetAll",
+    "name": "PedFemaleShoe01_8va"
+   },
+   {
+    "bank": "FeetAll",
+    "name": "PedFemaleShoe02_8va"
+   },
+   {
+    "bank": "FeetAll",
+    "name": "PedFemaleShoe03_8va"
+   },
+   {
+    "bank": "FeetAll",
+    "name": "PedFemaleShoe04_8va"
+   }
+  ]
+ },
+ "ambient": {
+  "location_cm": [
+   26000,
+   7300,
+   1300
+  ],
+  "sounds": [
+   {
+    "bank": "Ambs",
+    "name": "NewSchoolOutdoor_F",
+    "volume": 0.8
+   },
+   {
+    "bank": "Ambs",
+    "name": "Birds01",
+    "volume": 0.45
+   }
+  ]
+ },
+ "loops": [
+  {
+   "id": "plaza_ew",
+   "note": "east-west promenade on the promenade south of the building forecourt",
+   "speed_cm_s": 175,
+   "idle_min": 1.0,
+   "idle_max": 3.0,
+   "waypoints_cm": [
+    [
+     23500,
+     5000,
+     610
+    ],
+    [
+     23500,
+     9500,
+     610
+    ],
+    [
+     23800,
+     9500,
+     610
+    ],
+    [
+     23800,
+     5000,
+     610
+    ]
+   ],
+   "walkers": [
+    {
+     "student": "boy01",
+     "start_index": 0
+    },
+    {
+     "student": "asiangirl",
+     "start_index": 2
+    }
+   ]
+  },
+  {
+   "id": "central_walk",
+   "note": "out-and-back along the central path from the terrace toward the gates",
+   "speed_cm_s": 190,
+   "idle_min": 2.0,
+   "idle_max": 4.0,
+   "waypoints_cm": [
+    [
+     24500,
+     7150,
+     610
+    ],
+    [
+     28600,
+     7150,
+     580
+    ]
+   ],
+   "walkers": [
+    {
+     "student": "greekboy",
+     "start_index": 0
+    },
+    {
+     "student": "nerd_bucky",
+     "start_index": 1
+    }
+   ]
+  },
+  {
+   "id": "crossing",
+   "note": "out-and-back along the east-west crossing path",
+   "speed_cm_s": 200,
+   "idle_min": 1.5,
+   "idle_max": 3.5,
+   "waypoints_cm": [
+    [
+     27000,
+     4800,
+     620
+    ],
+    [
+     27000,
+     9700,
+     620
+    ]
+   ],
+   "walkers": [
+    {
+     "student": "prefect_seth",
+     "start_index": 0
+    }
+   ]
+  },
+  {
+   "id": "front_of_building",
+   "note": "in front of the main building",
+   "speed_cm_s": 170,
+   "idle_min": 2.0,
+   "idle_max": 5.0,
+   "waypoints_cm": [
+    [
+     21600,
+     5300,
+     850
+    ],
+    [
+     21600,
+     9500,
+     860
+    ],
+    [
+     21900,
+     9500,
+     860
+    ],
+    [
+     21900,
+     5300,
+     860
+    ]
+   ],
+   "walkers": [
+    {
+     "student": "boy02",
+     "start_index": 1
+    }
+   ]
+  },
+  {
+   "id": "gate_approach",
+   "note": "outside the front gates",
+   "speed_cm_s": 185,
+   "idle_min": 1.5,
+   "idle_max": 3.0,
+   "waypoints_cm": [
+    [
+     30700,
+     6600,
+     550
+    ],
+    [
+     30700,
+     8000,
+     550
+    ],
+    [
+     31200,
+     8000,
+     530
+    ],
+    [
+     31200,
+     6600,
+     530
+    ]
+   ],
+   "walkers": [
+    {
+     "student": "asiangirl",
+     "start_index": 0
+    }
+   ]
+  },
+  {
+   "id": "inner_courtyard",
+   "note": "the cobbled forecourt just inside the front gates",
+   "speed_cm_s": 180,
+   "idle_min": 1.5,
+   "idle_max": 3.5,
+   "waypoints_cm": [
+    [
+     29000,
+     6700,
+     590
+    ],
+    [
+     29000,
+     7900,
+     590
+    ],
+    [
+     29700,
+     7900,
+     590
+    ],
+    [
+     29700,
+     6700,
+     590
+    ]
+   ],
+   "walkers": [
+    {
+     "student": "boy02",
+     "start_index": 0
+    },
+    {
+     "student": "greekboy",
+     "start_index": 2
+    }
+   ]
+  }
+ ]
+}
