@@ -12,7 +12,7 @@
 
 ## Phase 0 milestones (status)
 
-1. Assets in (importers → academy grounds + main building in UE) — **in progress**: UE 5.8 project skeleton compiles (`unreal/BullyRemake`, Build.sh, settings V7); format survey done (`docs/re-notes/format-survey.md`); opus-builder writing `tools/importers` on branch `phase0-importers` (worktree `~/bully-remake-wt/importers`)
+1. Assets in — **importers DONE, merged to phase0** (`tools/importers`: IMG/NIF/NFT/IPB + `world` command; 932/939 academy models → glTF, 48 tests; run `python3 -m tools.importers world` with BULLY_INSTALL set, 25 s). UE side **in progress**: opus-builder on branch `phase0-ue` (worktree `~/bully-remake-wt/ue`) writing `tools/ue/import_content.py` + Bullworth level + front-gate Lumen screenshots → `~/bully-remake-evidence/m1/`
 2. Interior in — not started
 3. Jimmy moves — not started
 4. Signs of life — not started
@@ -27,9 +27,11 @@
 
 ## Next steps
 
-- Scout upstream repos (bully-re, Bully-SE-scripts, bully-mact-tool) for IMG/CAT/NIF/TXD format specs.
-- Build the importer pipeline (milestone 1).
+- Merge `phase0-ue` when the UE import + level + screenshots land; review screenshots.
+- Milestone 2 (doors) + 3 (Jimmy): locomotion numbers live in Act.img action trees (see `docs/re-notes/locomotion-spec.md` — CAT_TO_MACT decode verified; param-name mapping OPEN).
+- Original-game reference footage (milestones 3/5/6): Bully runs via CrossOver; capture needs a desktop-visible window + GPU slot — schedule when owner is not using the machine/streaming.
 
-## Blockers
+## Blockers / notes
 
-- None.
+- Ghidra is NOT installed on this machine (kickoff assumed a Ghidra MCP). When needed (anim formats, locomotion params, loader confirmation): `brew install --cask ghidra` and prefer headless `analyzeHeadless` scripts — no listener, no macOS dialogs. Not yet installed; not yet needed.
+- Evidence convention: disposable captures → `~/bully-remake-evidence/<milestone>/` (outside repo); episode-worthy material noted here before cleanup.
