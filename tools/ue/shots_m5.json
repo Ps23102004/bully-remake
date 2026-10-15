@@ -19,18 +19,16 @@
   {
    "name": "front_gates",
    "location_cm": [
-    33200,
+    32600,
     7300,
-    2000
+    625
    ],
    "look_at_cm": [
     18600,
     7300,
-    1550
+    3400
    ],
-   "fov": 57,
-   "ground_trace": true,
-   "eye_height_cm": 300
+   "fov": 64
   },
   {
    "name": "facade_courtyard",
