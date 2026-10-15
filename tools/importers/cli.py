@@ -115,7 +115,15 @@ def cmd_ped(a) -> int:
             names = []
         try:
             reqs = clip_requests(install, img, a.group, names) if names else []
-            r = export_ped(e.stem, img.read_entry(e), txd, store, a.out, reqs, root_motion=a.root_motion)
+            head = None
+            if a.head:
+                he = img.find(a.head + ".nif")
+                if he is None:
+                    print(f"{a.head}: not in World.img", file=sys.stderr)
+                    return 1
+                hide = defs.get(he.stem)
+                head = (he.stem, img.read_entry(he), a.head_txd or (hide.txd if hide else he.stem))   # clothing rows: model == txd name
+            r = export_ped(e.stem, img.read_entry(e), txd, store, a.out, reqs, root_motion=a.root_motion, head=head)
         except FormatError as ex:
             print(f"{a.name}: FAILED {ex}", file=sys.stderr)
             return 1
@@ -292,6 +300,9 @@ def main(argv=None) -> int:
                                                "default: Jimmy's locomotion set")
     p.add_argument("--no-anims", action="store_true", help="skeleton and skin only")
     p.add_argument("--root-motion", default="inplace", choices=["inplace", "raw", "dummy"])
+    p.add_argument("--head", help="clothing head/hair model (e.g. B_Buzz = Jimmy's default hair) that replaces the base head: "
+                                  "its shape is skinned onto the ped's skeleton by joint name, the base head triangles are cut out")
+    p.add_argument("--head-txd", help="texture dictionary of --head (default: its IDE row, else the model name)")
     p.add_argument("--txd", help="override the texture dictionary (default: from the IDE)")
     p.add_argument("--no-textures", action="store_true")
     p.add_argument("--sheet", help="also render a CPU contact sheet PNG (bind pose + frames per clip)")
