@@ -102,7 +102,7 @@ def cmd_nft(a) -> int:
     with _archive(install, "Stream/World.img") as img:
         rc = 0
         for name in a.names:
-            stem = os.path.splitext(name)[0]
+            stem = os.path.splitext(os.path.basename(name))[0]
             try:
                 if os.path.exists(name):
                     with open(name, "rb") as f:
