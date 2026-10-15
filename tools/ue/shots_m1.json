@@ -1,0 +1,20 @@
+{
+  "_owner": "builder-B (ue)",
+  "_note": "Phase 0 milestone-1 evidence shots for /Game/Imported/Maps/Bullworth. UE cm = (100 x, -100 y, 100 z) of game metres. Front gates = tschool SC1b_MGates02/03 at game (302.9, -72.7); main building SC1b_bldg_main at game (186.2, -73.3), facade faces +X toward the gates; lobby = ischool LOBBY01 at game (-628.6, -310.7), floor LM_lobbyflr at z 0; entrance on the -y (UE +y) side, staircase toward +y; the lobby shot stands inside the entrance looking at the stairs.",
+  "warmup_seconds": 20,
+  "settle_seconds": 8,
+  "max_compile_wait_seconds": 1500,
+  "quit_after_seconds": 3,
+  "highres_size": [3840, 2160],
+  "exec": ["r.SetRes 3840x2160w", "r.HighResScreenshotDelay 8", "r.MotionBlurQuality 0", "t.MaxFPS 30"],
+  "shots": [
+    {"name": "front_gates", "location_cm": [32200, 7300, 2000], "look_at_cm": [18600, 7300, 2200],
+     "fov": 75, "ground_trace": true, "eye_height_cm": 170},
+    {"name": "main_facade", "location_cm": [24800, 8200, 2000], "look_at_cm": [20800, 7330, 2600],
+     "fov": 80, "ground_trace": true, "eye_height_cm": 170},
+    {"name": "lobby_interior", "location_cm": [-62860, 32100, 170], "look_at_cm": [-62860, 30000, 420],
+     "fov": 85, "ground_trace": false},
+    {"name": "aerial_overview", "location_cm": [39000, 22000, 9000], "look_at_cm": [18600, 7300, 1500],
+     "fov": 70, "ground_trace": false}
+  ]
+}
