@@ -12,9 +12,9 @@
 
 ## Phase 0 milestones (status)
 
-1. Assets in — **importers DONE, merged to phase0** (`tools/importers`: IMG/NIF/NFT/IPB + `world` command; 932/939 academy models → glTF, 48 tests; run `python3 -m tools.importers world` with BULLY_INSTALL set, 25 s). UE side **in progress**: opus-builder on branch `phase0-ue` (worktree `~/bully-remake-wt/ue`) writing `tools/ue/import_content.py` + Bullworth level + front-gate Lumen screenshots → `~/bully-remake-evidence/m1/`
-2. Interior in — not started
-3. Jimmy moves — not started
+1. Assets in — **DONE** (merged e1fbf74). `tools/importers world` (25 s) → `tools/ue/run_import.sh` (headless Interchange import, ~6 min cold / 25 s warm, idempotent) → `/Game/Imported/Maps/Bullworth` (2,553 placements, 8 master materials, Lumen rig). Evidence: 4×4K Lumen shots in `~/bully-remake-evidence/m1/` (front gates = the milestone shot). Known visual debts: lobby overexposed (sun leaks into interior pocket), fake-mirror floor doubles reflections, gloss/specular mapping guessed, normal-map green channel unverified. Interiors render in distant pockets and there is a mirrored under-ground copy — both match the original game's own tricks, not import bugs.
+2. Interior in — next (door triggers → interior pockets; needs a walkable pawn)
+3. Jimmy moves — importer gap: skinned meshes export without skin weights; AGR/HXD animation formats unparsed (likely Ghidra). PLAYER.nif identified.
 4. Signs of life — not started
 5. The shot — not started
 6. Proof capture — not started
