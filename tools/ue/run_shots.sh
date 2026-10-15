@@ -26,6 +26,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -f "$SHOTS" ] || br_die "shot file $SHOTS missing"
+SHOTS="$(cd "$(dirname "$SHOTS")" && pwd)/$(basename "$SHOTS")"   # the engine runs from another cwd
+OUT="$(mkdir -p "$OUT" && cd "$OUT" && pwd)"
 [ -f "$BR_REPO/unreal/BullyRemake/Content/Imported/Maps/Bullworth.umap" ] || br_die "level missing: run tools/ue/run_import.sh first"
 RX=${RES%x*}; RY=${RES#*x}
 

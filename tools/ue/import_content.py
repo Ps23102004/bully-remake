@@ -27,6 +27,9 @@ import traceback
 
 import unreal
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import lighting  # noqa: E402
+
 ROOT = "/Game/Imported"
 TEX_ROOT = ROOT + "/Textures"
 MAT_ROOT = ROOT + "/Materials"
@@ -36,6 +39,13 @@ MASTER_VERSION = "5"          # bump to force master-material graph rebuild (ins
 MESH_VERSION = "4"            # bump to force mesh re-import + slot re-binding
 TEX_VERSION = "2"             # bump when texture import settings change
 TAG = "br_src_sha1"
+
+# Fake-mirror trick (M5): the lobby floor is a translucent tile layer (glTF materials "TransFloor",
+# "TransFloor Dark") over `reflect_LOBBY`, an upside-down copy of the lobby at z -9.5 m, so the original
+# renderer showed a "reflection". Under Lumen the copy lights/doubles the room. Documented choice:
+# the floor becomes OPAQUE and the mirror copy is not placed (real reflections come from Lumen).
+FAKE_MIRROR_FLOOR_MATERIALS = {"TransFloor", "TransFloor Dark"}
+FAKE_MIRROR_MODELS = {"reflect_LOBBY"}
 
 AT = unreal.AssetToolsHelpers.get_asset_tools()
 EAL = unreal.EditorAssetLibrary
@@ -396,8 +406,11 @@ def mat_key(m, base_dir, imported):
         # meant to be blended; a near-zero test threshold under BLEND_Masked shows the black
         # texels. Masked at 0.5 keeps them opaque-sorted and crisp.
         cutoff = max(cutoff, 0.5)
+    blend = ex.get("blend_mode", "opaque")
+    if m.get("name") in FAKE_MIRROR_FLOOR_MATERIALS:
+        blend = "opaque"
     d = {
-        "blend": ex.get("blend_mode", "opaque"),
+        "blend": blend,
         "two_sided": bool(m.get("doubleSided", False)),
         "tex": texs,
         "cutoff": round(cutoff, 4),
@@ -693,6 +706,9 @@ def build_level(manifest, placements, scenes):
             stats["skipped_no_gltf"] += 1
             continue
         name = p["model"]
+        if name in FAKE_MIRROR_MODELS:
+            stats["skipped_fake_mirror"] = stats.get("skipped_fake_mirror", 0) + 1
+            continue
         if name not in mesh_cache:
             ap = "%s/%s" % (MESH_ROOT, sanitize(name))
             mesh_cache[name] = EAL.load_asset(ap) if EAL.does_asset_exist(ap) else None
@@ -719,25 +735,8 @@ def build_level(manifest, placements, scenes):
         a.set_editor_property("tags", [unreal.Name("br_scene:" + p["scene"]), unreal.Name("br_model:" + name)])
         stats["placed"] += 1
 
-    # first lighting rig: sun + sky atmosphere + realtime skylight + height fog (Lumen GI/reflections
-    # are enabled project-wide in DefaultEngine.ini)
-    sun = spawn(unreal.DirectionalLight, unreal.Vector(0, 0, 10000), unreal.Rotator(roll=0, pitch=-38, yaw=200),
-                "BR_Sun", "Lighting")
-    sc = sun.get_component_by_class(unreal.DirectionalLightComponent)
-    sc.set_editor_property("mobility", unreal.ComponentMobility.MOVABLE)
-    sc.set_editor_property("intensity", 10.0)
-    sc.set_editor_property("atmosphere_sun_light", True)
-    sky = spawn(unreal.SkyLight, unreal.Vector(0, 0, 12000), None, "BR_SkyLight", "Lighting")
-    skc = sky.get_component_by_class(unreal.SkyLightComponent)
-    skc.set_editor_property("mobility", unreal.ComponentMobility.MOVABLE)
-    skc.set_editor_property("real_time_capture", True)
-    spawn(unreal.SkyAtmosphere, unreal.Vector(0, 0, 0), None, "BR_SkyAtmosphere", "Lighting")
-    fog = spawn(unreal.ExponentialHeightFog, unreal.Vector(0, 0, 0), None, "BR_HeightFog", "Lighting")
-    fc = fog.get_component_by_class(unreal.ExponentialHeightFogComponent)
-    fc.set_editor_property("fog_density", 0.01)
-    fc.set_editor_property("fog_height_falloff", 0.1)
-    ppv = spawn(unreal.PostProcessVolume, unreal.Vector(0, 0, 0), None, "BR_PostProcess", "Lighting")
-    ppv.set_editor_property("unbound", True)
+    # lighting rig (tools/ue/lighting.py; re-runnable standalone through run_lighting.sh)
+    stats["lighting"] = lighting.build_rig(eas, os.environ.get("BR_LIGHT_VARIANT"))
     # spawn point in front of the main gates (game ~(322, -73)), facing the main building
     spawn(unreal.PlayerStart, unreal.Vector(32200, 7300, 1200), unreal.Rotator(0, 0, 180), "BR_PlayerStart", "Gameplay")
 
