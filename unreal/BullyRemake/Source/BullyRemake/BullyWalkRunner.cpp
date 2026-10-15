@@ -1,7 +1,9 @@
 // OWNER: builder-B2 (doors); M3 steps builder-B3 (jimmy)
 #include "BullyWalkRunner.h"
 
+#include "AmbientWalker.h"
 #include "BullyAnimInstance.h"
+#include "EngineUtils.h"
 #include "BullyCharacter.h"
 #include "Misc/App.h"
 #include "Components/CapsuleComponent.h"
@@ -118,6 +120,9 @@ bool UBullyWalkRunner::LoadScript(const FString& Path)
 		if (O->TryGetNumberField(TEXT("trigger_time"), D)) { S.TriggerTime = float(D); }
 		if (O->TryGetNumberField(TEXT("after"), D)) { S.After = float(D); }
 		if (O->TryGetNumberField(TEXT("fps"), D)) { S.Fps = float(D); }
+		O->TryGetStringField(TEXT("student"), S.Student);
+		O->TryGetBoolField(TEXT("head_on"), S.bHeadOn);
+		if (O->TryGetNumberField(TEXT("spawn_dist"), D)) { S.SpawnDist = float(D); }
 		S.bHasPos = O->HasField(TEXT("x")) && O->HasField(TEXT("y"));
 		Steps.Add(S);
 	}
@@ -215,6 +220,41 @@ void UBullyWalkRunner::BeginStep(UWorld* World, ABullyCharacter* Pawn, FBullyWal
 		Pawn->SetScriptedGait(ParseGait(S.Gait, S.bRun));
 		Note(FString::Printf(TEXT("walk_to '%s' from %s to (%.0f,%.0f) gait %d cam %s timeout %.0fs"), *S.Name, *Pawn->GetActorLocation().ToString(), S.Pos.X, S.Pos.Y, int32(Pawn->GetGait()), *S.Cam, S.Seconds));
 	}
+	else if (S.Do == TEXT("walk_into_walker"))
+	{
+		AAmbientWalker* Wk = nullptr;
+		float Best = 1e9f;
+		for (TActorIterator<AAmbientWalker> It(World); It; ++It)
+		{
+			if (!S.Student.IsEmpty() && It->StudentId != S.Student) { continue; }
+			const float D = FVector::Dist2D(It->GetActorLocation(), Pawn->GetActorLocation());
+			if (D < Best) { Best = D; Wk = *It; }
+		}
+		WalkerRef = Wk;
+		WalkerMinDist = 1e9f;
+		if (!Wk)
+		{
+			++Failures;
+			Note(FString::Printf(TEXT("walk_into_walker '%s' FAILED: no walker '%s'"), *S.Name, *S.Student));
+		}
+		else
+		{
+			WalkerYieldsAtStart = Wk->GetYieldCount();
+			if (S.bHeadOn)
+			{
+				// ahead of the walker on its own (path-checked) leg: toward its next waypoint, at most 85 % of the way
+				FVector Fwd = Wk->GetNextWaypoint() - Wk->GetActorLocation(); Fwd.Z = 0.f;
+				const float Leg = Fwd.Size();
+				const FVector From = Wk->GetActorLocation() + Fwd.GetSafeNormal() * FMath::Min(S.SpawnDist, 0.85f * Leg);
+				const FVector Face = Wk->GetActorLocation() - From;
+				Pawn->TeleportTo(From, FRotator(0.f, Face.Rotation().Yaw, 0.f), false, true);
+				Pawn->GetCharacterMovement()->StopMovementImmediately();
+			}
+			Pawn->SetScriptedGait(ParseGait(S.Gait, S.bRun));
+			Note(FString::Printf(TEXT("walk_into_walker '%s' target %s (%s, loop %s) at %s, player %s, %.0f cm apart"), *S.Name, *Wk->GetName(), *Wk->StudentId, *Wk->LoopId,
+				*Wk->GetActorLocation().ToString(), *Pawn->GetActorLocation().ToString(), FVector::Dist2D(Wk->GetActorLocation(), Pawn->GetActorLocation())));
+		}
+	}
 	else if (S.Do == TEXT("action_shot"))
 	{
 		ActionPhase = 0;
@@ -310,6 +350,27 @@ bool UBullyWalkRunner::TickStep(UWorld* World, ABullyCharacter* Pawn, FBullyWalk
 			PC->SetControlRotation(FRotator(-12.f, Dir.Rotation().Yaw, 0.f));
 		}
 		Pawn->AddMovementInput(Dir, 1.f);
+		return false;
+	}
+	if (S.Do == TEXT("walk_into_walker"))
+	{
+		AAmbientWalker* Wk = WalkerRef.Get();
+		if (!Wk) { return true; }
+		FVector To = Wk->GetActorLocation() - Pawn->GetActorLocation();
+		To.Z = 0.f;
+		WalkerMinDist = FMath::Min(WalkerMinDist, To.Size());
+		if (PC && S.Cam != TEXT("follow")) { PC->SetControlRotation(FRotator(-12.f, To.Rotation().Yaw, 0.f)); }
+		Pawn->AddMovementInput(To.GetSafeNormal(), 1.f);
+		if (T >= S.Seconds)
+		{
+			const float R2 = Pawn->GetCapsuleComponent()->GetScaledCapsuleRadius() + Wk->GetCapsuleComponent()->GetScaledCapsuleRadius();
+			const bool bPenetrated = WalkerMinDist < 0.85f * R2;
+			if (bPenetrated) { ++Failures; }
+			Note(FString::Printf(TEXT("walk_into_walker '%s' RESULT %s: closest centre distance %.1f cm (capsules touch at %.0f), walker yields +%d, final distance %.0f cm"),
+				*S.Name, bPenetrated ? TEXT("PENETRATED") : TEXT("blocked"), WalkerMinDist, R2, Wk->GetYieldCount() - WalkerYieldsAtStart, To.Size()));
+			Pawn->SetRunning(false);
+			return true;
+		}
 		return false;
 	}
 	if (S.Do == TEXT("action_shot"))

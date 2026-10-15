@@ -12,7 +12,7 @@ class ABullyCharacter;
 
 struct FBullyWalkStep
 {
-	FString Do;                       // wait | face | teleport | walk_to | wait_door | shot | trace_ground | log | jump
+	FString Do;                       // wait | face | teleport | walk_to | wait_door | shot | trace_ground | log | jump | walk_into_walker
 	FString Name;
 	FVector Pos = FVector::ZeroVector; // walk_to / teleport / trace_ground (UE cm)
 	float Yaw = 0.f;
@@ -32,6 +32,10 @@ struct FBullyWalkStep
 	float TriggerTime = 1.f;
 	float After = 1.f;                 // action_shot: keep moving this long after the shot
 	float Fps = 30.f;                  // record_start
+	// --- polish1 ---
+	FString Student;                   // walk_into_walker: AmbientLoops student id ("" = nearest walker); footstep_probe: label
+	float SpawnDist = 500.f;           // walk_into_walker head_on: the player is placed this far ahead of the walker's heading
+	bool bHeadOn = true;
 };
 
 /**
@@ -47,6 +51,10 @@ struct FBullyWalkStep
  *    "trigger":"time|apex|air|land","trigger_time":..,"after":1.0} moves the character, pauses the game at the trigger,
  *    takes a settled high-res shot of the frozen moment, unpauses and keeps moving;
  *   {"do":"record_start","fps":30} / {"do":"record_stop"}: fixed time step + one viewport PNG per frame into <dir>/frames/.
+ * Polish1: {"do":"walk_into_walker","name":..,"student":"boy01","head_on":true,"spawn_dist":500,"gait":"run","timeout":10}
+ *   puts the player on the walker's heading (or leaves it where it is) and walks straight at the walker for `timeout`
+ *   seconds; logs the closest centre distance (a capsule-capsule contact is 2 x 30 cm, anything under ~50 cm means the
+ *   capsules interpenetrated = FAILURE) and how often the walker yielded. Needs no renderer (-nullrhi runs work).
  */
 UCLASS()
 class UBullyWalkRunner : public UGameInstanceSubsystem, public FTickableGameObject
@@ -98,6 +106,10 @@ private:
 	TArray<FBullyWalkStep> Steps;
 	TArray<FString> Log;
 	int32 Failures = 0;
+	// walk_into_walker (polish1)
+	TWeakObjectPtr<class AAmbientWalker> WalkerRef;
+	float WalkerMinDist = 1e9f;
+	int32 WalkerYieldsAtStart = 0;
 	// action_shot
 	int32 ActionPhase = 0;            // 0 moving, 1 paused/settling, 2 shot taken, 3 after
 	double ActionMark = 0.0;
