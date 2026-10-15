@@ -1,0 +1,47 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git checkout*)",
+      "Bash(git switch*)",
+      "Bash(git branch*)",
+      "Bash(git push origin phase0*)",
+      "Bash(git push -u origin phase0*)",
+      "Bash(git worktree*)",
+      "Bash(gh pr*)",
+      "Bash(gh repo view*)",
+      "Bash(gh api*)",
+      "Bash(python3*)",
+      "Bash(pytest*)",
+      "Bash(ls*)",
+      "Bash(find*)",
+      "Bash(xxd*)",
+      "Bash(file*)",
+      "Bash(du*)",
+      "Bash(wc*)",
+      "Bash(tmux*)",
+      "Bash(open -a*)",
+      "Bash(open -g*)",
+      "Bash(xcodebuild*)",
+      "Bash(./tools/*)",
+      "Bash(bash tools/*)",
+      "Bash(/Users/Shared/Epic Games/UE_5.8/Engine/Build/BatchFiles/Mac/Build.sh*)",
+      "Bash(\"/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/UnrealEditor-Cmd\"*)",
+      "Read(//Users/midir/Library/Application Support/CrossOver/Bottles/Steam/**)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push origin main*)",
+      "Bash(git push origin HEAD:main*)",
+      "Bash(git reset --hard*)",
+      "Bash(git rebase*)",
+      "Bash(gh pr merge*)",
+      "Write(//Users/midir/bully-remake/imported/**)"
+    ]
+  }
+}

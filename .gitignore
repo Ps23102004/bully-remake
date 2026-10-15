@@ -1,0 +1,31 @@
+# Imported game content — NEVER committed. Importers write here at build time.
+imported/
+Imported/
+
+# Unreal
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+Build/
+*.xcworkspace
+*.xcodeproj
+.vs/
+.vscode/
+
+# Captures / evidence (disposable per operating rules)
+captures/
+evidence/
+
+# macOS
+.DS_Store
+
+# Secrets
+*.env
+.secrets/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
