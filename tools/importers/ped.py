@@ -268,7 +268,8 @@ class ClipRequest:
 
 def export_ped(name: str, data, txd: str | None, store, out_dir: str, clips: list = (),
                root_motion: str = "inplace", entity_space: bool = True,
-               bone_track_check: bool = True) -> PedResult:
+               bone_track_check: bool = True, head: tuple | None = None) -> PedResult:
+    """`head` = (model name, NIF bytes, txd) of a clothing "head" model (hair): see _HEAD_MODEL below."""
     if root_motion not in ROOT_MOTION_MODES:
         raise ValueError(f"root_motion must be one of {ROOT_MOTION_MODES}")
     res = PedResult(name)
@@ -306,116 +307,164 @@ def export_ped(name: str, data, txd: str | None, store, out_dir: str, clips: lis
     skins: list = []                        # list of (joint list, ibm list) per glTF skin
     main_skin_ibm: dict = {}
     mesh_nodes = []
-    for b in nif.blocks:
-        if b.type_name not in GEOMETRY or b.data is None:
-            continue
-        d = b.data
-        sname = nif.string(d["name"]) or f"#{b.index}"
-        if d["skin"] < 0:
-            res.skipped_shapes.append({"shape": sname, "reason": "not skinned" if not d["flags"] & 1 else "hidden"})
-            continue
-        if d["flags"] & 1:
-            res.skipped_shapes.append({"shape": sname, "reason": "hidden"})
-            continue
-        si = nif.data(d["skin"], "NiSkinInstance")
-        sd = nif.data(si["data"], "NiSkinData") if si else None
-        gd = nif.data(d["data"], "NiTriShapeData", "NiTriStripsData")
-        if si is None or sd is None or gd is None or not gd["vertices"]:
-            res.skipped_shapes.append({"shape": sname, "reason": "incomplete skin/geometry"})
-            continue
-        if len(sd["bones"]) != len(si["bones"]):
-            raise FormatError(f"{sname}: skin instance has {len(si['bones'])} bones, data {len(sd['bones'])}")
-        ov = coords.Xform.from_av({"rotation": sd["overall"]["rotation"], "scale": sd["overall"]["scale"],
-                                   "translation": sd["overall"]["translation"]})
-        if not ov.is_identity(1e-5):
-            res.warnings.append(f"{sname}: NiSkinData overall transform is not identity (applied as S_b * O)")
-        W = _shape_world(nif, b.index, entity_space)
-        Winv = m4_inv_affine(W)
-        nv = gd["num_vertices"]
-        src = gd["vertices"]
-        # per-bone IBM in game space, and the skinned bind pose check
-        shape_ibm = {}
-        for k, bone_ref in enumerate(si["bones"]):
-            if bone_ref not in jidx:
-                raise FormatError(f"{sname}: skin bone #{bone_ref} is outside the skeleton")
-            S = m4_mul(m4_from_xform(coords.Xform.from_av(sd["bones"][k]["transform"])), m4_from_xform(ov))
-            shape_ibm[jidx[bone_ref]] = (k, m4_mul(S, Winv), S)
-        consistent = all(main_skin_ibm.get(ji) is None or _max_abs_diff(main_skin_ibm[ji], ibm) < 1e-4
-                         for ji, (_k, ibm, _S) in shape_ibm.items())
-        if consistent:
-            for ji, (_k, ibm, _S) in shape_ibm.items():
-                main_skin_ibm.setdefault(ji, ibm)
-            skin_slot = 0
-        else:
-            res.warnings.append(f"{sname}: bind matrices disagree with the shared skin; own skin")
-            skins.append(dict((ji, ibm) for ji, (_k, ibm, _S) in shape_ibm.items()))
-            skin_slot = len(skins)
-        # weights per vertex
-        infl = [[] for _ in range(nv)]
-        for ji, (k, _ibm, _S) in shape_ibm.items():
-            for vi, w in sd["bones"][k]["weights"]:
-                if vi >= nv:
-                    raise FormatError(f"{sname}: weight for vertex {vi} >= {nv}")
-                if w > 0:
-                    infl[vi].append((w, ji))
-        joints_attr, weights_attr = [], []
-        worst = 0.0
-        for vi in range(nv):
-            lst = sorted(infl[vi], reverse=True)
-            res.max_influences = max(res.max_influences, len(lst))
-            if not lst:
-                res.unweighted_vertices += 1
-                lst = [(1.0, jidx.get(si["skeleton_root"], 0))]
-            if len(lst) > 4:
-                res.warnings.append(f"{sname}: vertex {vi} has {len(lst)} influences, kept 4")
-                lst = lst[:4]
-            tot = sum(w for w, _ in lst)
-            res.weight_sum_max_error = max(res.weight_sum_max_error, abs(tot - 1.0))
-            lst = [(w / tot, j) for w, j in lst] + [(0.0, 0)] * (4 - len(lst))
-            joints_attr.extend(j for _w, j in lst)
-            weights_attr.extend(w for w, _j in lst)
-            # bind pose check: sum w * M_b * S_b * v vs the stored vertex W * v
-            v = src[3 * vi:3 * vi + 3]
-            acc = [0.0, 0.0, 0.0]
-            for w, ji in lst:
-                if w <= 0:
-                    continue
-                p = m4_apply(m4_mul(joints[ji].world, shape_ibm[ji][2]), v)
-                for c in range(3):
-                    acc[c] += w * p[c]
-            ref = m4_apply(W, v)
-            worst = max(worst, math.dist(acc, ref))
-        res.bind_vs_stored_max_m = max(res.bind_vs_stored_max_m, worst)
-        # geometry in model space (glTF basis)
-        pos, nrm = [], []
-        for vi in range(nv):
-            pos.extend(vec_game_to_gltf(m4_apply(W, src[3 * vi:3 * vi + 3])))
-        if gd["normals"]:
-            R = [row[:3] for row in W[:3]]
+    sources = [(nif, jidx, txd, None)]
+    if head is not None:
+        hname, hdata, htxd = head
+        hnif = parse_nif(hdata)
+        hfailed = hnif.failed_blocks()
+        if hfailed:
+            raise FormatError(f"{hname}: {len(hfailed)} blocks failed to decode, first: #{hfailed[0].index} {hfailed[0].type_name}")
+        hroot = find_skeleton_root(hnif)
+        hjoints = build_skeleton(hnif, hroot, entity_space)
+        by_name = {j.name: i for i, j in enumerate(joints)}
+        hjidx = {}
+        for hj in hjoints:
+            if hj.name in by_name:   # joints only the head model has (e.g. 'Root Footsteps') are not skin bones; a skin
+                hjidx[hj.block] = by_name[hj.name]   # bone outside the skeleton raises FormatError in the shape loop
+        # head models replace the base head: cut the base shape's triangles at the head model's lowest vertex
+        hz = []
+        for hb in hnif.blocks:
+            if hb.type_name in GEOMETRY and hb.data and hb.data["skin"] >= 0 and not hb.data["flags"] & 1:
+                hg = hnif.data(hb.data["data"], "NiTriShapeData", "NiTriStripsData")
+                hz += hg["vertices"][2::3]
+        head_cut = (min(hz) - 0.005) if hz else None
+        sources = [(nif, jidx, txd, head_cut), (hnif, hjidx, htxd, None)]
+        res.warnings.append(f"head model {hname} (txd {htxd}) replaces the {name} head above z={head_cut:.3f} m")
+    for snif, sjidx, stxd, head_cut in sources:
+        for b in snif.blocks:
+            if b.type_name not in GEOMETRY or b.data is None:
+                continue
+            d = b.data
+            sname = snif.string(d["name"]) or f"#{b.index}"
+            if d["skin"] < 0:
+                res.skipped_shapes.append({"shape": sname, "reason": "not skinned" if not d["flags"] & 1 else "hidden"})
+                continue
+            if d["flags"] & 1:
+                res.skipped_shapes.append({"shape": sname, "reason": "hidden"})
+                continue
+            si = snif.data(d["skin"], "NiSkinInstance")
+            sd = snif.data(si["data"], "NiSkinData") if si else None
+            gd = snif.data(d["data"], "NiTriShapeData", "NiTriStripsData")
+            if si is None or sd is None or gd is None or not gd["vertices"]:
+                res.skipped_shapes.append({"shape": sname, "reason": "incomplete skin/geometry"})
+                continue
+            if len(sd["bones"]) != len(si["bones"]):
+                raise FormatError(f"{sname}: skin instance has {len(si['bones'])} bones, data {len(sd['bones'])}")
+            if head_cut is not None:
+                # the base model's head shape (nearly all vertices above the head model's lowest vertex) is cut out and
+                # the vertex arrays compacted; the head model brings its own (hair + face) mesh and texture
+                Wc = _shape_world(snif, b.index, entity_space)
+                nv0 = gd["num_vertices"]
+                zs = [m4_apply(Wc, gd["vertices"][3 * i:3 * i + 3])[2] for i in range(nv0)]
+                if sum(1 for z in zs if z >= head_cut) > 0.8 * nv0:
+                    tri = gd["triangles"]
+                    kept = [tri[3 * t:3 * t + 3] for t in range(len(tri) // 3)
+                            if not all(zs[i] >= head_cut for i in tri[3 * t:3 * t + 3])]
+                    used = sorted({i for t in kept for i in t})
+                    remap = {o: n for n, o in enumerate(used)}
+                    gd = dict(gd)
+                    gd["num_vertices"] = len(used)
+                    gd["vertices"] = [c for o in used for c in gd["vertices"][3 * o:3 * o + 3]]
+                    if gd.get("normals"):
+                        gd["normals"] = [c for o in used for c in gd["normals"][3 * o:3 * o + 3]]
+                    gd["uv_sets"] = [[c for o in used for c in uv[2 * o:2 * o + 2]] for uv in gd["uv_sets"]]
+                    if gd.get("colors"):
+                        gd["colors"] = [c for o in used for c in gd["colors"][4 * o:4 * o + 4]]
+                    gd["triangles"] = [remap[i] for t in kept for i in t]
+                    sd = dict(sd)
+                    sd["bones"] = [dict(bn, weights=[(remap[vi], w) for vi, w in bn["weights"] if vi in remap]) for bn in sd["bones"]]
+                    res.warnings.append(f"{sname}: head cut out ({nv0 - len(used)} of {nv0} vertices, {(len(tri) // 3) - len(kept)} triangles dropped)")
+            ov = coords.Xform.from_av({"rotation": sd["overall"]["rotation"], "scale": sd["overall"]["scale"],
+                                       "translation": sd["overall"]["translation"]})
+            if not ov.is_identity(1e-5):
+                res.warnings.append(f"{sname}: NiSkinData overall transform is not identity (applied as S_b * O)")
+            W = _shape_world(snif, b.index, entity_space)
+            Winv = m4_inv_affine(W)
+            nv = gd["num_vertices"]
+            src = gd["vertices"]
+            # per-bone IBM in game space, and the skinned bind pose check
+            shape_ibm = {}
+            for k, bone_ref in enumerate(si["bones"]):
+                if bone_ref not in sjidx:
+                    raise FormatError(f"{sname}: skin bone #{bone_ref} is outside the skeleton")
+                S = m4_mul(m4_from_xform(coords.Xform.from_av(sd["bones"][k]["transform"])), m4_from_xform(ov))
+                shape_ibm[sjidx[bone_ref]] = (k, m4_mul(S, Winv), S)
+            consistent = all(main_skin_ibm.get(ji) is None or _max_abs_diff(main_skin_ibm[ji], ibm) < 1e-4
+                             for ji, (_k, ibm, _S) in shape_ibm.items())
+            if consistent:
+                for ji, (_k, ibm, _S) in shape_ibm.items():
+                    main_skin_ibm.setdefault(ji, ibm)
+                skin_slot = 0
+            else:
+                res.warnings.append(f"{sname}: bind matrices disagree with the shared skin; own skin")
+                skins.append(dict((ji, ibm) for ji, (_k, ibm, _S) in shape_ibm.items()))
+                skin_slot = len(skins)
+            # weights per vertex
+            infl = [[] for _ in range(nv)]
+            for ji, (k, _ibm, _S) in shape_ibm.items():
+                for vi, w in sd["bones"][k]["weights"]:
+                    if vi >= nv:
+                        raise FormatError(f"{sname}: weight for vertex {vi} >= {nv}")
+                    if w > 0:
+                        infl[vi].append((w, ji))
+            joints_attr, weights_attr = [], []
+            worst = 0.0
             for vi in range(nv):
-                n = coords.mat_vec(R, gd["normals"][3 * vi:3 * vi + 3])
-                ln = math.sqrt(sum(c * c for c in n)) or 1.0
-                nrm.extend(vec_game_to_gltf([c / ln for c in n]))
-        attrs = {"POSITION": gb.add_floats(pos, "VEC3", minmax=True)}
-        if nrm:
-            attrs["NORMAL"] = gb.add_floats(nrm, "VEC3")
-        for k, uv in enumerate(gd["uv_sets"]):
-            attrs[f"TEXCOORD_{k}"] = gb.add_floats(list(uv), "VEC2")
-        if gd["colors"]:
-            attrs["COLOR_0"] = gb.add_floats([min(max(c, 0.0), 1.0) for c in gd["colors"]], "VEC4")
-        attrs["JOINTS_0"] = gb.add_uints(joints_attr, "VEC4", 5123)
-        attrs["WEIGHTS_0"] = gb.add_floats(weights_attr, "VEC4")
-        props, path = _shape_props(nif, b.index)
-        mat = _material_json(nif, props, store, txd, name, gb, mres, len(gd["uv_sets"]), bool(gd["colors"])) \
-            if store is not None else {"name": "material", "pbrMetallicRoughness": {"metallicFactor": 0.0}}
-        prim = {"attributes": attrs, "indices": gb.add_indices(list(gd["triangles"])),
-                "material": gb.material(mat),
-                "extras": {"shape": sname, "block": b.index, "node_path": "/".join(path)}}
-        mesh = gb.mesh(sname, [prim])
-        mesh_nodes.append((sname, mesh, skin_slot))
-        res.shapes += 1
-        res.vertices += nv
-        res.triangles += len(gd["triangles"]) // 3
+                lst = sorted(infl[vi], reverse=True)
+                res.max_influences = max(res.max_influences, len(lst))
+                if not lst:
+                    res.unweighted_vertices += 1
+                    lst = [(1.0, sjidx.get(si["skeleton_root"], 0))]
+                if len(lst) > 4:
+                    res.warnings.append(f"{sname}: vertex {vi} has {len(lst)} influences, kept 4")
+                    lst = lst[:4]
+                tot = sum(w for w, _ in lst)
+                res.weight_sum_max_error = max(res.weight_sum_max_error, abs(tot - 1.0))
+                lst = [(w / tot, j) for w, j in lst] + [(0.0, 0)] * (4 - len(lst))
+                joints_attr.extend(j for _w, j in lst)
+                weights_attr.extend(w for w, _j in lst)
+                # bind pose check: sum w * M_b * S_b * v vs the stored vertex W * v
+                v = src[3 * vi:3 * vi + 3]
+                acc = [0.0, 0.0, 0.0]
+                for w, ji in lst:
+                    if w <= 0:
+                        continue
+                    p = m4_apply(m4_mul(joints[ji].world, shape_ibm[ji][2]), v)
+                    for c in range(3):
+                        acc[c] += w * p[c]
+                ref = m4_apply(W, v)
+                worst = max(worst, math.dist(acc, ref))
+            res.bind_vs_stored_max_m = max(res.bind_vs_stored_max_m, worst)
+            # geometry in model space (glTF basis)
+            pos, nrm = [], []
+            for vi in range(nv):
+                pos.extend(vec_game_to_gltf(m4_apply(W, src[3 * vi:3 * vi + 3])))
+            if gd["normals"]:
+                R = [row[:3] for row in W[:3]]
+                for vi in range(nv):
+                    n = coords.mat_vec(R, gd["normals"][3 * vi:3 * vi + 3])
+                    ln = math.sqrt(sum(c * c for c in n)) or 1.0
+                    nrm.extend(vec_game_to_gltf([c / ln for c in n]))
+            attrs = {"POSITION": gb.add_floats(pos, "VEC3", minmax=True)}
+            if nrm:
+                attrs["NORMAL"] = gb.add_floats(nrm, "VEC3")
+            for k, uv in enumerate(gd["uv_sets"]):
+                attrs[f"TEXCOORD_{k}"] = gb.add_floats(list(uv), "VEC2")
+            if gd["colors"]:
+                attrs["COLOR_0"] = gb.add_floats([min(max(c, 0.0), 1.0) for c in gd["colors"]], "VEC4")
+            attrs["JOINTS_0"] = gb.add_uints(joints_attr, "VEC4", 5123)
+            attrs["WEIGHTS_0"] = gb.add_floats(weights_attr, "VEC4")
+            props, path = _shape_props(snif, b.index)
+            mat = _material_json(snif, props, store, stxd, name, gb, mres, len(gd["uv_sets"]), bool(gd["colors"])) \
+                if store is not None else {"name": "material", "pbrMetallicRoughness": {"metallicFactor": 0.0}}
+            prim = {"attributes": attrs, "indices": gb.add_indices(list(gd["triangles"])),
+                    "material": gb.material(mat),
+                    "extras": {"shape": sname, "block": b.index, "node_path": "/".join(path)}}
+            mesh = gb.mesh(sname, [prim])
+            mesh_nodes.append((sname, mesh, skin_slot))
+            res.shapes += 1
+            res.vertices += nv
+            res.triangles += len(gd["triangles"]) // 3
     res.missing_textures = mres.missing_textures
     res.warnings += [w for w in mres.warnings if w not in res.warnings]
     if not mesh_nodes:

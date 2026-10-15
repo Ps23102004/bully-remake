@@ -1,0 +1,205 @@
+{
+ "_owner": "polish1",
+ "_note": "FOR THE NEXT RENDERING SESSION (not run by polish1; the owner was playing). Run: BR_EXTRA_ARGS=-BRDoorTrace tools/ue/run_walk.sh --script tools/ue/walk_polish_verify.json --out ~/bully-remake-evidence/polish1/visual --res 1920x1080 --label bully-polish-verify. Covers: (1) walk into students (player must be blocked, walker yields, no capsule overlap, nothing fills the lens), (2) both door directions (smooth dip to black and back, no pop, no flat grey backdrop in the entrance doorway), (3) footsteps on grass / dirt path / sidewalk / lobby tile (BR_AUDIO surface lines in the log; run WITHOUT -NoSound by hand to hear them: remove it from run_walk.sh's engine args), (4) Jimmy's head (hair) from the front and side. Logic-only twin (renderer-free): tools/ue/walk_polish_logic.json via run_walk_nullrhi.sh.",
+ "warmup_seconds": 15,
+ "settle_seconds": 3,
+ "max_compile_wait_seconds": 1800,
+ "highres_size": [
+  1920,
+  1080
+ ],
+ "exec": [
+  "r.MotionBlurQuality 0",
+  "t.MaxFPS 30",
+  "r.HighResScreenshotDelay 8"
+ ],
+ "steps": [
+  {
+   "do": "log",
+   "name": "V00_spawn"
+  },
+  {
+   "do": "wait",
+   "seconds": 3
+  },
+  {
+   "do": "record_start",
+   "fps": 30
+  },
+  {
+   "do": "walk_into_walker",
+   "name": "V01_head_on_greekboy_run",
+   "student": "greekboy",
+   "head_on": true,
+   "spawn_dist": 600,
+   "gait": "run",
+   "cam": "follow",
+   "timeout": 9
+  },
+  {
+   "do": "shot",
+   "name": "V01b_after_contact"
+  },
+  {
+   "do": "walk_into_walker",
+   "name": "V02_head_on_asiangirl_run",
+   "student": "asiangirl",
+   "head_on": true,
+   "spawn_dist": 600,
+   "gait": "run",
+   "cam": "follow",
+   "timeout": 9
+  },
+  {
+   "do": "walk_into_walker",
+   "name": "V03_head_on_prefect_walk",
+   "student": "prefect_seth",
+   "head_on": true,
+   "spawn_dist": 600,
+   "gait": "walk",
+   "cam": "follow",
+   "timeout": 10
+  },
+  {
+   "do": "teleport",
+   "name": "V04_street_start",
+   "x": 32200,
+   "y": 7300,
+   "z": 800,
+   "yaw": 180
+  },
+  {
+   "do": "walk_to",
+   "name": "V05_street_grass_to_gate_arch_walk",
+   "x": 30300,
+   "y": 7300,
+   "gait": "walk",
+   "cam": "follow",
+   "timeout": 20,
+   "radius": 60,
+   "stop_on_door": false
+  },
+  {
+   "do": "walk_to",
+   "name": "V06_gate_to_central_path_sprint",
+   "x": 28600,
+   "y": 7150,
+   "gait": "sprint",
+   "cam": "follow",
+   "timeout": 20,
+   "radius": 80,
+   "stop_on_door": false
+  },
+  {
+   "do": "walk_to",
+   "name": "V07_central_path_to_sidewalk_run",
+   "x": 24500,
+   "y": 7150,
+   "gait": "run",
+   "cam": "follow",
+   "timeout": 25,
+   "radius": 80,
+   "stop_on_door": false
+  },
+  {
+   "do": "teleport",
+   "name": "V08_forecourt",
+   "x": 22300,
+   "y": 7330,
+   "z": 1100,
+   "yaw": 180
+  },
+  {
+   "do": "walk_to",
+   "name": "V09_into_main_door",
+   "x": 21070,
+   "y": 7330,
+   "gait": "walk",
+   "cam": "follow",
+   "timeout": 30,
+   "radius": 20,
+   "stop_on_door": true
+  },
+  {
+   "do": "wait_door",
+   "timeout": 6
+  },
+  {
+   "do": "shot",
+   "name": "V10_entrance_hall_after_door"
+  },
+  {
+   "do": "walk_to",
+   "name": "V11_across_lobby_tile",
+   "x": -62860,
+   "y": 31400,
+   "gait": "walk",
+   "cam": "follow",
+   "timeout": 20,
+   "radius": 60,
+   "stop_on_door": false
+  },
+  {
+   "do": "face",
+   "name": "V12_look_at_exit_doorway",
+   "yaw": -90,
+   "pitch": -5
+  },
+  {
+   "do": "wait",
+   "seconds": 2
+  },
+  {
+   "do": "shot",
+   "name": "V13_lobby_floor_glints_and_doorway_backdrop"
+  },
+  {
+   "do": "walk_to",
+   "name": "V14_back_to_exit_door",
+   "x": -62860,
+   "y": 32950,
+   "gait": "walk",
+   "cam": "follow",
+   "timeout": 30,
+   "radius": 20,
+   "stop_on_door": true
+  },
+  {
+   "do": "wait_door",
+   "timeout": 6
+  },
+  {
+   "do": "wait",
+   "seconds": 1.5
+  },
+  {
+   "do": "action_shot",
+   "name": "V15_jimmy_side_hair",
+   "yaw": 90,
+   "gait": "none",
+   "cam": "side",
+   "pitch": -5,
+   "trigger": "time",
+   "trigger_time": 1.0,
+   "after": 0.5
+  },
+  {
+   "do": "action_shot",
+   "name": "V16_jimmy_front_hair",
+   "yaw": 90,
+   "gait": "none",
+   "cam": "front",
+   "pitch": -5,
+   "trigger": "time",
+   "trigger_time": 1.0,
+   "after": 0.5
+  },
+  {
+   "do": "record_stop"
+  },
+  {
+   "do": "log",
+   "name": "V99_end"
+  }
+ ]
+}

@@ -150,8 +150,9 @@ frame-snapped (HXD play durations are not frame multiples) -> `.../Jimmy/Anims/<
 spaces in joint names into hyphens (`Root L Thigh` -> `Root-L-Thigh`). Idempotent through `br_src_sha1` tags.
 Verification in the report (`Saved/BullyImport/character_report_latest.json`): 36 bones; for 14 locomotion clips,
 36 bone tracks each and the rotation change of 5 bones between t=0 and t=L/2 equals the glTF keys' (max mismatch
-0.2 deg; a T-posed clip would read 0). Jimmy is bald: the PLAYER model has no hair mesh (haircuts are OPEN, importer
-notes) - not chased.
+0.2 deg; a T-posed clip would read 0). Jimmy's hair: his starting haircut is the clothing item `B_Buzz` (a full head model with painted
+buzz-cut hair, the game's own default), not part of `PLAYER.nif`; `ped PLAYER --head B_Buzz` wires it, any other haircut is one flag away
+(polish1, `docs/re-notes/ped-heads-hair.md`).
 
 **Character** (`ABullyCharacter`, replaces `ABullyPawn`; `[CoreRedirects]` in DefaultEngine.ini). Mesh yaw +90 turns
 the clips' forward (game +y = UE -Y) onto actor +X (the bind pose faces the other way; only the clips matter).
@@ -243,7 +244,7 @@ force Jimmy's bone offsets on every body). `UBullyAnimInstance` now resolves its
 
 **Walkers** (`AAmbientWalker : ABullyCharacter`): the same capsule, movement and C++ locomotion as Jimmy. Walks `Waypoints`
 at `speed_cm_s` (walk clip: measured 2.05 m/s authored, set to 1.7-2.0 here), idles `idle_min..idle_max` s at each
-waypoint, real collision with the level (walkers' capsules overlap pawns: they neither block each other nor the player). A walker that makes < 25 % of
+waypoint, real collision with the level (M4 shipped them overlapping the player; polish1 made them solid for the player and yielding, see "Polish 1"). A walker that makes < 25 % of
 the expected progress for 3 s skips its waypoint and logs `BR_AMBIENT STUCK`. `UAmbientSubsystem` (world subsystem, active on
 `*Bullworth*` when the JSON exists; `-BRNoAmbient` disables) spawns them at BeginPlay and runs `BR_AMBIENT path-check`: a
 ground trace per waypoint and a capsule sweep per segment (capsule lifted by the 45 cm step height) against the level.
@@ -266,8 +267,7 @@ the log (`BR_AUDIO ambient loop play ... audioDevice=0`, one `BR_AUDIO step` per
 chest height, FOV 70), `fixed:x:y:z:lookX:lookY:lookZ:<seconds>` holds a free camera; entries cycle. The walk runner's
 `record_start/record_stop` and `shot` steps capture whatever the view target shows.
 
-Known: walkers and the player pass through each other (no ped-ped avoidance);
-all footsteps are the cement set (no surface probe); no start/stop/turn clips (walkers turn in place on the C_Player
+Known (M4; both fixed in polish1): walkers and the player passed through each other; all footsteps were the cement set. Still: no start/stop/turn clips (walkers turn in place on the C_Player
 locomotion blend); `front_of_building` sits on a raised terrace the player reaches by stairs (not path-checked across levels).
 
 ## Milestone 5: THE SHOT (`lighting.py`, `run_lighting.sh`, `run_candidates.sh`, `shots_m5.json`)
@@ -340,3 +340,32 @@ the pawn is the M2 placeholder body: `BR_CHAR Jimmy mesh MISSING` in the log; fi
 two `ABullyDoorLink` actors in the saved map (else `wait_door TIMEOUT`; fix `tools/ue/run_place_doors.sh`, which
 re-places `door_links.json` into the saved map in ~15 s, no re-import). A level rebuild while the editor module is not
 built saves a map without doors (`door links skipped` warning in `import_*.log`).
+
+## Polish 1 (`polish1`): collision, doors, hair, footsteps (`run_walk_nullrhi.sh`, `walk_polish_*.json`)
+<!-- OWNER: polish1 -->
+
+Logic is verified without a renderer: `tools/ue/run_walk_nullrhi.sh --script tools/ue/walk_polish_logic.json --out DIR`
+runs the real game (`-game -nullrhi -NoSound`, same GPU-slot / window-watchdog envelope as the other runners, no window, no
+GPU) and logs `BR_WALK`, `BR_DOOR`, `BR_AMBIENT YIELD`, `BR_AUDIO surface`. `BR_EXTRA_ARGS=-BRDoorTrace` adds one
+`BR_DOOR_TRACE` line per frame of a door transition.
+
+- **Player vs students.** Walkers are normal Pawn capsules, so the player is blocked by them. Walker <-> walker stays
+  pass-through (every pair ignores the other while moving, `AAmbientWalker::BeginPlay`): two walkers meeting head-on on a
+  shared loop would otherwise deadlock and the stuck logic would skip waypoints. Walkers yield to the player
+  (`TickYield`): player within 190 cm and closing in (or touching) -> 0.35 s pause, then a 0.9 s side-step toward the free
+  side, 2.5 s cooldown, yield time excluded from the stuck check. (A walker with its own collision channel was tried first
+  and rejected: the level's meshes answer a new channel differently from Pawn and walkers froze at corners.)
+  Test: `walk_into_walker` runs head-on into walkers on three loops and reports the closest centre distance (capsules
+  touch at 60 cm; < 51 = interpenetration = failure).
+- **Door transitions** (`ABullyDoorLink`): frame-driven state machine, FadeOut (smoothstep) -> one full-black frame ->
+  teleport + camera cut + spring-arm lag drop -> hold black >= 0.12 s and >= 3 frames -> FadeIn. The timer version
+  teleported on a timer tick that runs before the camera manager applied the last fade step, so the cut landed on a ~90 %
+  faded frame and the new view restarted at ~87 %. The exterior seen through the entrance doorway from inside is the
+  original's own backdrop (`DL_iSchoolEnt4`, SC_*Screen cards) lit only by the dim interior key: `lighting_variants.json`
+  `interior.backdrop_glow` now makes those cards self-lit (gain 5000, an ESTIMATE; re-apply with `run_lighting.sh`); the
+  lobby floor's window glints are toned down (`interior.floor` roughness 0.22 -> 0.45, specular 0.6 -> 0.35, also an estimate).
+- **Hair**: `docs/re-notes/ped-heads-hair.md` (`ped PLAYER --head B_Buzz`).
+- **Footsteps**: `docs/re-notes/audio-formats.md` section 6 (decoded cue graph, `Config/FootstepSurfaces.json`,
+  `tools/ue/walk_polish_surfaces.json` maps the courtyard headless).
+- **For the next rendering session**: `tools/ue/walk_polish_verify.json` (walk into a student, both door directions, footsteps on
+  grass / path / sidewalk / lobby tile) -- needs a visible-quality run, NOT run by this task.

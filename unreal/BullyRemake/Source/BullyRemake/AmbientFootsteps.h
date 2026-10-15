@@ -18,8 +18,15 @@ class UBullyFootstepComponent : public UActorComponent
 public:
 	UBullyFootstepComponent();
 
-	/** Candidate one-shots (a random one per step, never the same twice in a row). */
+	/** Legacy fixed set (milestone 4: cement only). Used only when the per-surface cue tables are not available. */
 	UPROPERTY(Transient) TArray<TObjectPtr<USoundBase>> Sounds;
+	/**
+	 * Per-surface cue selection (polish1): "player" | "student" | "female". Every foot plant probes the surface under the
+	 * foot (base-texture / model name -> surface, Config/FootstepSurfaces.json), picks the game's own footstep cue family
+	 * for that surface, role and gait (Content/Imported/Audio/footstep_cues.json, decoded SDBK cue graph) and plays the
+	 * wave with the cue's pitch (+ its random range). See docs/re-notes/audio-formats.md section 6.
+	 */
+	FString Role = TEXT("student");
 	UPROPERTY(EditAnywhere, Category = "Bully|Audio") float Volume = 0.8f;
 	UPROPERTY(EditAnywhere, Category = "Bully|Audio") float PitchVariation = 0.06f;
 	/** Steps farther than this from the listener (the local player's pawn) are skipped entirely. */
@@ -34,13 +41,22 @@ public:
 	FString Tag;   // log label
 
 	int32 GetStepCount() const { return StepCount; }
+	const FString& GetLastSurface() const { return LastSurface; }
+	/** True when Config/FootstepSurfaces.json and Content/Imported/Audio/footstep_cues.json were both loaded. */
+	static bool TablesAvailable();
+	/** Surface name under `Where` (feet level); fills the reason (texture/model/component) and whether it is an interior pocket. */
+	FString ProbeSurface(const FVector& Where, FString& OutWhy, bool& bOutInterior);
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
 	void PlayStep(int32 Foot, const FVector& Where);
+	USoundBase* LoadCueSound(const FString& Asset);
 
 	UPROPERTY(Transient) TObjectPtr<USoundAttenuation> Attenuation;
+	UPROPERTY(Transient) TMap<FString, TObjectPtr<USoundBase>> CueSounds;
+	FString LastSurface;
+	FString LastCue;
 	bool bDown[2] = { true, true };
 	bool bInit = false;
 	float MinZ[2] = { 1e9f, 1e9f };

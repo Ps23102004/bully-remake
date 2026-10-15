@@ -1,0 +1,45 @@
+{
+ "format": "bully-remake.footstep-surfaces/1",
+ "_note": "polish1. Hand-authored (our data, no game content): (1) which cue FAMILIES of the game's own footstep sound banks (decoded SDBK cue graph, docs/re-notes/audio-formats.md) serve each surface, role and gait; (2) the substring rules that turn the base-texture / model name under the foot into a surface. `python3 -m tools.importers audio footsteps` resolves (1) against the real banks into imported/audio/footstep_cues.json; tools/ue/import_ambient.py imports the waves and writes Content/Imported/Audio/footstep_cues.json, which UBullyFootstepComponent reads together with this file. Texture names are matched lower-case; the first rule whose scope fits and that contains any needle wins.",
+ "contexts": {
+  "exterior": ["FeetAll"],
+  "interior": ["FeetSCHL", "FeetAll"]
+ },
+ "_contexts_note": "Bank order per context (first bank with the family wins). FeetSCHL is the school-hallway bank (audio/CONFIG/areabank.txt: School_Hallways, Classroom, Staff_Room, Principal -> FEET\\FeetSCHL.bnk); FeetAll is the outdoor bank (Test_Area, Island_3).",
+ "interior_scene_prefixes": ["ischool", "isc_"],
+ "default_surface": {"exterior": "cement", "interior": "lino"},
+ "gait_prefix": {
+  "player": {"walk": "WALK", "run": "RUN", "sprint": ["FRUN", "FST_RUN"]},
+  "student": {"walk": "WALK", "run": "RUN", "sprint": ["FST_RUN"]},
+  "female": {"walk": "WALK", "run": "RUN", "sprint": ["RUN"]}
+ },
+ "_cue_naming": "{G}_<SURFACE>[_PL][_DRY]<n>: WALK / RUN / FST_RUN (students, fast run) or FRUN (player, fast run); _PL = the player's own variants (sneakers); P_{G}_ = player-only metal/dirt; HI_HEEL = girls' shoes.",
+ "surfaces": {
+  "cement":  {"player": ["{G}_CEM_PL_DRY"], "student": ["{G}_CEM_DRY"], "female": ["{G}_HI_HEEL", "{G}_CEM_DRY"]},
+  "grass":   {"player": ["{G}_GRASS"], "student": ["{G}_GRASS"], "female": ["{G}_GRASS"]},
+  "dirt":    {"player": ["P_{G}_DIRT", "{G}_DIRT"], "student": ["{G}_DIRT"], "female": ["{G}_DIRT"]},
+  "gravel":  {"player": ["{G}_GRAVEL"], "student": ["{G}_GRAVEL"], "female": ["{G}_GRAVEL"]},
+  "mud":     {"player": ["{G}_MUD"], "student": ["{G}_MUD"], "female": ["{G}_MUD"]},
+  "sand":    {"player": ["{G}_SAND"], "student": ["{G}_SAND"], "female": ["{G}_SAND"]},
+  "metal":   {"player": ["P_{G}_METAL", "{G}_METAL"], "student": ["{G}_METAL"], "female": ["{G}_HI_HEEL", "{G}_METAL"]},
+  "dock":    {"player": ["{G}_DOCK", "{G}_FLR_PL", "{G}_FLR"], "student": ["{G}_DOCK", "{G}_FLR"], "female": ["{G}_HI_HEEL", "{G}_DOCK"]},
+  "floor":   {"player": ["{G}_FLR_PL", "{G}_FLR"], "student": ["{G}_FLR"], "female": ["{G}_HI_HEEL", "{G}_FLR"]},
+  "lino":    {"player": ["{G}_LINO_PL", "{G}_FLR_PL", "{G}_FLR"], "student": ["{G}_FLR"], "female": ["{G}_HI_HEEL", "{G}_FLR"]},
+  "carpet":  {"player": ["{G}_CARPET"], "student": ["{G}_CARPET"], "female": ["{G}_CARPET"]}
+ },
+ "rules": [
+  {"surface": "grass",  "match": ["grass", "lawn", "bgcover"]},
+  {"surface": "dirt",   "match": ["roaddirt", "dirt", "bluedirt", "trail"]},
+  {"surface": "mud",    "match": ["mud"]},
+  {"surface": "gravel", "match": ["gravel", "pebble"]},
+  {"surface": "sand",   "match": ["sand", "beach"]},
+  {"surface": "metal",  "match": ["metal", "grate", "steel", "girder", "mtl", "diamondplate"]},
+  {"surface": "carpet", "match": ["carpet", "rug"]},
+  {"surface": "lino",   "match": ["tile", "lino", "whttile"], "scope": "interior"},
+  {"surface": "floor",  "match": ["wood", "floor", "plank", "parquet"], "scope": "interior"},
+  {"surface": "dock",   "match": ["plank", "dock", "boardwalk", "wood"], "scope": "exterior"},
+  {"surface": "cement", "match": ["sidewalk", "concrete", "cement", "curb", "asphalt", "tarmac", "road", "pave", "cobble", "brick", "stair", "step", "stone", "slab", "tile"], "scope": "exterior"}
+ ],
+ "model_rules": [],
+ "probe": {"start_up_cm": 40, "down_cm": 140}
+}

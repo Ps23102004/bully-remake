@@ -244,9 +244,22 @@ void ABullyCharacter::UpdateGait()
 	Move->RotationRate = FRotator(0.f, Turn, 0.f);
 }
 
+void ABullyCharacter::SnapCamera()
+{
+	if (CameraBoom && CameraLagSpeed > 0.f)
+	{
+		CameraBoom->bEnableCameraLag = false;
+		LagRestoreFrames = 2;
+	}
+}
+
 void ABullyCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	if (LagRestoreFrames > 0 && --LagRestoreFrames == 0 && CameraBoom)
+	{
+		CameraBoom->bEnableCameraLag = CameraLagSpeed > 0.f;
+	}
 	UpdateGait();
 	if (GetCharacterMovement()->IsFalling())
 	{

@@ -140,6 +140,195 @@ def _parse_banks(d, path, hdr, sd_off, sd_len, wb_off, wb_len) -> SeaBank:
     return bank
 
 
+# ---- SDBK: the XACT 2/3 sound bank (cue -> sound -> track -> clip -> event -> wave) -------------------------
+
+@dataclass
+class SdbkCue:
+    index: int
+    name: str
+    flags: int              # 4 in every Bully cue (simple cue that points at a sound)
+    sound_offset: int       # bytes from 'SDBK'
+    sound: "SdbkSound" = None
+
+
+@dataclass
+class SdbkSound:
+    offset: int
+    flags: int              # 3 in all 11,075 sounds: bit0 complex (tracks), bit1 RPC list present
+    category: int
+    volume_byte: int
+    pitch: int              # s16
+    priority: int
+    entry_length: int
+    rpc_codes: tuple
+    track_volume_byte: int
+    clip_offset: int
+    filter_a: int
+    filter_b: int
+    event_type: int         # 4 = PlayWave with effect variation, in every Bully sound
+    wave_index: int
+    wave_bank: int
+    pitch_min: int          # s16 variation range around the sound pitch
+    pitch_max: int
+    volume_min_byte: int
+    volume_max_byte: int
+    freq_min: float
+    freq_max: float
+    q_min: float
+    q_max: float
+
+    @property
+    def volume_db(self) -> float:
+        """XACT volume byte -> dB: 0 = -96 dB .. 255 = +6.0206 dB, linear in dB."""
+        return xact_volume_db(self.volume_byte)
+
+
+@dataclass
+class Sdbk:
+    bank_name: str
+    tool_version: int
+    format_version: int
+    platform: int
+    cues: list
+    wave_bank_names: list
+    sounds: list
+
+
+def xact_volume_db(b: int) -> float:
+    return (b / 255.0) * (6.0206 + 96.0) - 96.0
+
+
+def parse_sdbk(bank: "SeaBank") -> Sdbk:
+    """Decode the SDBK of a .SEA (layout = the public XACT 3 sound-bank format, FACT/FAudio's reader; tool version 44,
+    format 43 in all 322 banks). Bully's banks use ONE shape only: every cue is a simple cue (flags 4) that points at a
+    71-byte complex sound with 1 track, 2 RPC codes, 1 clip, 1 event of type 4 (PlayWave, effect variation, 40 bytes).
+    Anything else raises AudioError, so a surprise in another bank cannot silently mis-map."""
+    d = bank._data
+    b0 = bank.sdbk_offset
+    if d[b0:b0 + 4] != b"SDBK":
+        raise AudioError("no SDBK")
+    tool, fmt, _crc = struct.unpack_from("<3H", d, b0 + 4)
+    if fmt != 43:
+        raise AudioError(f"unsupported SDBK format version {fmt}")
+    platform = d[b0 + 0x12]
+    n_simple, n_complex, _u1, n_total = struct.unpack_from("<4H", d, b0 + 0x13)
+    n_wavebanks = d[b0 + 0x1B]
+    n_sounds, name_len, _u2 = struct.unpack_from("<3H", d, b0 + 0x1C)
+    (simple_off, complex_off, names_off, _a, var_off, _b, wbn_off, _hash_off, _hashv_off, sounds_off) = \
+        struct.unpack_from("<10I", d, b0 + 0x22)
+    if n_complex or n_sounds != n_simple:
+        raise AudioError(f"complex cues present ({n_complex}) or sounds != cues ({n_sounds} vs {n_simple}); not decoded")
+    names = d[b0 + names_off:b0 + names_off + name_len].split(b"\0")
+    bank_names = [d[b0 + wbn_off + 64 * i:b0 + wbn_off + 64 * (i + 1)].split(b"\0")[0].decode("latin1")
+                  for i in range(n_wavebanks)]
+    sounds: dict = {}
+    pos = sounds_off
+    for _ in range(n_sounds):
+        fl, cat, vol, pitch, prio, elen = struct.unpack_from("<BHBhBH", d, b0 + pos)
+        base = b0 + pos
+        ntr = d[base + 9]
+        xl = struct.unpack_from("<H", d, base + 10)[0]
+        nrpc = d[base + 12]
+        if fl != 3 or ntr != 1 or xl != 2 + 1 + 4 * nrpc or elen != 71:
+            raise AudioError(f"sound @{pos}: unexpected shape flags={fl} tracks={ntr} extra={xl} length={elen}")
+        rpc = struct.unpack_from(f"<{nrpc}I", d, base + 13)
+        q = base + 10 + xl
+        tvol = d[q]
+        clip, fa, fb = struct.unpack_from("<I2H", d, q + 1)
+        ev = b0 + clip + 1
+        if d[b0 + clip] != 1:
+            raise AudioError(f"sound @{pos}: {d[b0 + clip]} events")
+        hdr = struct.unpack_from("<I", d, ev)[0]
+        etype = hdr & 0x1F
+        if etype != 4:
+            raise AudioError(f"sound @{pos}: event type {etype}")
+        widx = struct.unpack_from("<H", d, ev + 8)[0]
+        wbank = d[ev + 10]
+        pmin, pmax = struct.unpack_from("<2h", d, ev + 16)
+        vmin, vmax = d[ev + 20], d[ev + 21]
+        fmin, fmax, qmin, qmax = struct.unpack_from("<4f", d, ev + 22)
+        sounds[pos] = SdbkSound(pos, fl, cat, vol, pitch, prio, elen, tuple(rpc), tvol, clip, fa, fb, etype, widx,
+                                wbank, pmin, pmax, vmin, vmax, fmin, fmax, qmin, qmax)
+        pos += elen
+    cues = []
+    for i in range(n_simple):
+        flags = d[b0 + simple_off + 5 * i]
+        so = struct.unpack_from("<I", d, b0 + simple_off + 5 * i + 1)[0]
+        nm = names[i].decode("latin1") if i < len(names) else f"#{i}"
+        cues.append(SdbkCue(i, nm, flags, so, sounds.get(so)))
+    return Sdbk(bank.bank_name, tool, fmt, platform, cues, bank_names, list(sounds.values()))
+
+
+def cue_table(bank: "SeaBank") -> dict:
+    """Plain-data cue graph of one bank: {cue name: {wave, wave_index, volume_db, pitch_cents, pitch_min, pitch_max}}.
+    pitch_cents is the sound's base pitch (XACT pitch units = cents: -1200 = one octave down, pairs with the waves
+    named '8va', recorded an octave up to save memory); the event adds a uniform random offset in
+    [pitch_min, pitch_max] cents per play."""
+    sd = parse_sdbk(bank)
+    out = {}
+    for c in sd.cues:
+        so = c.sound
+        out[c.name] = {"wave": bank.entries[so.wave_index].name, "wave_index": so.wave_index,
+                       "volume_db": round(so.volume_db, 2), "pitch_cents": so.pitch,
+                       "pitch_min": so.pitch_min, "pitch_max": so.pitch_max}
+    return out
+
+
+def resolve_footsteps(install, config: dict, log=print) -> dict:
+    """Resolve Config/FootstepSurfaces.json (hand-authored surface -> cue-family rules) against the real cue graphs.
+
+    config["contexts"]: context -> ordered bank list (first bank that has a family wins);
+    config["gait_prefix"]: role -> gait -> cue prefix (or an ordered list of prefixes); config["surfaces"]: surface ->
+    role -> [family template, ...] in fallback order, template '{G}_CEM_DRY' + gait prefix 'WALK' -> family
+    'WALK_CEM_DRY', members WALK_CEM_DRY0, WALK_CEM_DRY1, ...
+    Returns the runtime table (also lists unresolved entries instead of failing, so a missing cue is visible)."""
+    import re
+    banks: dict = {}
+    for ctx_banks in config["contexts"].values():
+        for b in ctx_banks:
+            if b not in banks:
+                path = next((p for p in sea_files(install) if p.stem.lower() == b.lower()), None)
+                if path is None:
+                    raise AudioError(f"bank {b} not found")
+                sb = parse_sea(path)
+                banks[b] = (sb, cue_table(sb))
+    out = {"format": "bully-remake.footstep-cues/1", "contexts": {}, "waves": {}, "unresolved": []}
+    for ctx, ctx_banks in config["contexts"].items():
+        table = {}
+        for surface, roles in config["surfaces"].items():
+            table[surface] = {}
+            for role, templates in roles.items():
+                table[surface][role] = {}
+                for gait, prefixes in config["gait_prefix"][role].items():
+                    found = None
+                    for bank in ctx_banks:
+                        cues = banks[bank][1]
+                        for tpl in templates:
+                            for prefix in ([prefixes] if isinstance(prefixes, str) else prefixes):
+                                fam = tpl.replace("{G}", prefix)
+                                rx = re.compile("^" + re.escape(fam) + r"(\d+)$")
+                                names = sorted((n for n in cues if rx.match(n)), key=lambda n: int(rx.match(n).group(1)))
+                                if names:
+                                    found = [dict(cue=n, bank=bank, **cues[n]) for n in names]
+                                    break
+                            if found:
+                                break
+                        if found:
+                            break
+                    if found:
+                        table[surface][role][gait] = found
+                        for c in found:
+                            out["waves"].setdefault(c["bank"], [])
+                            if c["wave"] not in out["waves"][c["bank"]]:
+                                out["waves"][c["bank"]].append(c["wave"])
+                    else:
+                        out["unresolved"].append(f"{ctx}/{surface}/{role}/{gait}: none of {templates} in {ctx_banks}")
+        out["contexts"][ctx] = table
+    for u in out["unresolved"]:
+        log("unresolved: " + u)
+    return out
+
+
 # ---- audio/PLAYLIST/{Ambs,Cuts,Music,Speech}.bin: streamed sound banks ----------------------------------------
 
 STREAM_BANKS = ("Ambs", "Cuts", "Music", "Speech")

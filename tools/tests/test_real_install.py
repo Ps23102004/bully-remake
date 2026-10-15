@@ -125,3 +125,18 @@ def test_player_skinned_export(world_img, tmp_path):
     assert r.bind_vs_stored_max_m < 0.003  # bully-re reports 2.3 mm for the same check
     speeds = {c["name"]: c["root_motion"]["speed_m_s"] for c in r.clips}
     assert speeds["IDLE"] == 0 and abs(speeds["PLAYERRUN"] - 3.61) < 0.01 and abs(speeds["RUNFAST"] - 8.01) < 0.01
+
+
+def test_ped_head_model_replaces_the_base_head(world_img, tmp_path):
+    """polish1: a clothing head (Jimmy's default hair B_Buzz) skins onto PLAYER's skeleton by joint name with identical
+    inverse bind matrices (one shared skin), and the base head triangles are cut out."""
+    from tools.importers.ped import export_ped
+    base = export_ped("PLAYER", world_img.read("PLAYER.nif"), "PLAYER", None, str(tmp_path / "a"))
+    r = export_ped("PLAYER", world_img.read("PLAYER.nif"), "PLAYER", None, str(tmp_path / "b"),
+                   head=("B_Buzz", world_img.read("B_Buzz.nif"), "B_Buzz"))
+    assert base.shapes == 4 and r.shapes == 5 and r.skins == 1 and r.joints == 36
+    assert r.vertices == base.vertices - 685 + 462                       # 685 head vertices out, the 462-vertex head in
+    assert r.triangles == base.triangles - 1076 + 718
+    assert any("head cut out (685 of 697 vertices" in w for w in r.warnings)
+    assert not any("disagree" in w for w in r.warnings)                  # IBMs equal: no second skin
+    assert r.bind_vs_stored_max_m < 0.004                                # skeleton poses differ by 2.3 mm at most
