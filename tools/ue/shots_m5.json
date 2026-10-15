@@ -26,11 +26,11 @@
    "look_at_cm": [
     18600,
     7300,
-    1180
+    1550
    ],
    "fov": 57,
    "ground_trace": true,
-   "eye_height_cm": 560
+   "eye_height_cm": 300
   },
   {
    "name": "facade_courtyard",
