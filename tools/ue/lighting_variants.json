@@ -1,0 +1,165 @@
+{
+ "_owner": "builder-B5 (shot)",
+ "_note": "Lighting variants for the golden-hour shot (Phase 0 milestone 5). Read by tools/ue/lighting.py. Sun: elevation above the horizon, azimuth = world yaw of the direction TOWARD the sun (UE yaw: 0 = +X, 90 = +Y). The main building facade and the front gates face +X, so azimuth near 0 front-lights them and azimuth near 60-90 rakes across them. intensity_lux is the atmosphere sun light (UE multiplies it by the atmosphere transmittance). Exposure is LOCKED: auto exposure min = max = exposure_ev100 (project uses ExtendDefaultLuminanceRange, so those are EV100), identical for every frame of a variant; critique rounds are comparable. Interiors are exposure-neutral by construction: they sit on lighting channel 1, the sun and sky-leak are kept off them, and a private interior key light (lighting channel 1 only) brings them to the same EV as the exterior, so no per-pocket exposure volume (which would pop at door transitions) is needed.",
+ "default_variant": "A_classic_gold",
+ "interior": {
+  "scene_prefixes": [
+   "isc_",
+   "ischool"
+  ],
+  "key_lux": 30000,
+  "key_pitch_deg": -78,
+  "key_yaw_deg": 215,
+  "key_temperature_k": 4600,
+  "key_source_angle_deg": 10.0
+ },
+ "variants": {
+  "A_classic_gold": {
+   "description": "Low warm sun in front of the facade (az 28, el 12): front-lit gates and facade, long shadows falling back toward the building, light haze.",
+   "sun": {
+    "elevation_deg": 12.0,
+    "azimuth_deg": 28.0,
+    "intensity_lux": 110000,
+    "temperature_k": 5400,
+    "source_angle_deg": 0.6
+   },
+   "sky": {
+    "intensity": 1.5
+   },
+   "atmosphere": {
+    "ground_albedo_rgb": [
+     0.3,
+     0.28,
+     0.25
+    ],
+    "aerial_perspective_distance_scale": 1.6
+   },
+   "fog": {
+    "density": 0.012,
+    "height_falloff": 0.12,
+    "inscatter_rgb": [
+     0.95,
+     0.72,
+     0.52
+    ],
+    "start_distance_cm": 2000,
+    "max_opacity": 0.85,
+    "volumetric": true,
+    "directional_inscatter_exponent": 6.0,
+    "directional_inscatter_rgb": [
+     1.0,
+     0.62,
+     0.3
+    ]
+   },
+   "exposure_ev100": 11.8,
+   "white_balance": {
+    "temp_k": 6200,
+    "tint": 0.0
+   },
+   "post": {
+    "bloom_intensity": 0.35,
+    "saturation": 1.05,
+    "contrast": 1.0
+   }
+  },
+  "B_raking_amber": {
+   "description": "Lower, side-on amber sun (az 62, el 9): strongly raking light across the facade, very long shadows, deeper orange, cooler blue shade.",
+   "sun": {
+    "elevation_deg": 9.0,
+    "azimuth_deg": 62.0,
+    "intensity_lux": 120000,
+    "temperature_k": 4300,
+    "source_angle_deg": 0.5
+   },
+   "sky": {
+    "intensity": 1.4
+   },
+   "atmosphere": {
+    "ground_albedo_rgb": [
+     0.28,
+     0.25,
+     0.22
+    ],
+    "aerial_perspective_distance_scale": 1.8
+   },
+   "fog": {
+    "density": 0.013,
+    "height_falloff": 0.1,
+    "inscatter_rgb": [
+     1.0,
+     0.6,
+     0.38
+    ],
+    "start_distance_cm": 1500,
+    "max_opacity": 0.6,
+    "volumetric": true,
+    "directional_inscatter_exponent": 8.0,
+    "directional_inscatter_rgb": [
+     1.0,
+     0.52,
+     0.22
+    ]
+   },
+   "exposure_ev100": 11.6,
+   "white_balance": {
+    "temp_k": 6000,
+    "tint": 0.0
+   },
+   "post": {
+    "bloom_intensity": 0.45,
+    "saturation": 1.1,
+    "contrast": 1.05
+   }
+  },
+  "C_rose_haze": {
+   "description": "Higher, softer sun (az 12, el 15) through thin pale-rose haze; lower contrast, cooler sky and shade, gentle atmosphere.",
+   "sun": {
+    "elevation_deg": 15.0,
+    "azimuth_deg": 12.0,
+    "intensity_lux": 90000,
+    "temperature_k": 5200,
+    "source_angle_deg": 1.2
+   },
+   "sky": {
+    "intensity": 1.6
+   },
+   "atmosphere": {
+    "ground_albedo_rgb": [
+     0.34,
+     0.32,
+     0.32
+    ],
+    "aerial_perspective_distance_scale": 2.2
+   },
+   "fog": {
+    "density": 0.008,
+    "height_falloff": 0.1,
+    "inscatter_rgb": [
+     0.8,
+     0.62,
+     0.62
+    ],
+    "start_distance_cm": 800,
+    "max_opacity": 0.55,
+    "volumetric": true,
+    "directional_inscatter_exponent": 4.0,
+    "directional_inscatter_rgb": [
+     1.0,
+     0.7,
+     0.6
+    ]
+   },
+   "exposure_ev100": 12.0,
+   "white_balance": {
+    "temp_k": 6600,
+    "tint": 0.1
+   },
+   "post": {
+    "bloom_intensity": 0.5,
+    "saturation": 0.98,
+    "contrast": 0.95
+   }
+  }
+ }
+}
