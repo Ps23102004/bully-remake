@@ -1,0 +1,41 @@
+{
+ "_owner": "builder-B4 (ambient)",
+ "_note": "M4 sequence: 30 fps fixed-step frame recording while the evidence camera (-BRAmbientCam=<student>:<s>,...) chases walkers; the pawn stands idle at the gates.",
+ "warmup_seconds": 15,
+ "settle_seconds": 3,
+ "max_compile_wait_seconds": 1800,
+ "highres_size": [
+  1920,
+  1080
+ ],
+ "exec": [
+  "r.MotionBlurQuality 0",
+  "t.MaxFPS 30",
+  "r.HighResScreenshotDelay 8"
+ ],
+ "steps": [
+  {
+   "do": "log",
+   "name": "start"
+  },
+  {
+   "do": "wait",
+   "seconds": 6
+  },
+  {
+   "do": "record_start",
+   "fps": 30
+  },
+  {
+   "do": "wait",
+   "seconds": 36
+  },
+  {
+   "do": "record_stop"
+  },
+  {
+   "do": "log",
+   "name": "end"
+  }
+ ]
+}

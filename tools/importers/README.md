@@ -31,6 +31,11 @@ Set one of these. The path is never hard-coded.
     python3 -m tools.importers ped PLAYER --anims '*' --sheet ~/bully-remake-evidence/m3/sheet.png
     python3 -m tools.importers anim                       # list MAINPED.HXD animation groups
     python3 -m tools.importers anim C_Player              # clips: play duration, travel, speed
+    python3 -m tools.importers ped GN_Boy01 --anims IDLE PLAYERWALK PLAYERRUN RUNFAST ...   # any student ped (same 36-joint skeleton)
+    python3 -m tools.importers audio survey               # .SEA sound banks + PLAYLIST streams: counts, codecs
+    python3 -m tools.importers audio list FeetAll         # wave names, durations, rates
+    python3 -m tools.importers audio extract FeetAll Wind # MS-ADPCM -> 16-bit WAV in imported/audio/<bank>/ + manifest.json
+    python3 -m tools.importers audio extract Ambs --names 'NewSchoolOutdoor_F|Birds01'   # streamed banks (audio/PLAYLIST), on request
 
 Tests: `python3 -m pytest tools/tests` (synthetic fixtures). Set `BULLY_INSTALL` to also
 run the integration tests against the real install.

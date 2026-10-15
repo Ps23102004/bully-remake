@@ -6,6 +6,7 @@
 #
 #   tools/ue/run_walk.sh [--script tools/ue/walk_m2.json] [--out DIR] [--res 1920x1080] [--label bully-doors]
 #   tools/ue/run_walk.sh --script tools/ue/walk_m3.json --out ~/bully-remake-evidence/m3 --res 1280x720 --label bully-jimmy
+# BR_EXTRA_ARGS="-BRAmbientCam=..." appends engine arguments (milestone 4 evidence camera).
 # A script with record_start/record_stop leaves <out>/frames/f_NNNNN.png; they are encoded to <out>/sequence.mp4
 # (ffmpeg, 30 fps) and thinned to every 10th frame (<out>/frames_keep/) to save disk.
 #
@@ -46,7 +47,7 @@ rm -rf "$OUT/frames"
 "$GPU_SLOT" capture --label "$LABEL" -- \
   "$UE_CMD" "$BR_UPROJECT" "$MAP" -game -RenderOffScreen -ResX="$RX" -ResY="$RY" -windowed \
   -unattended -nosplash -nocrashreports -NoSound -notraceserver -NoVSync -stdout -FullStdOutLogOutput \
-  -BRWalkFile="$SHOTS" -BRWalkDir="$OUT" \
+  -BRWalkFile="$SHOTS" -BRWalkDir="$OUT" ${BR_EXTRA_ARGS:-} \
   > "$LOG" 2>&1 &
 WRAP=$!
 br_window_watch "$WRAP" "$OUT/window_watch.txt" &

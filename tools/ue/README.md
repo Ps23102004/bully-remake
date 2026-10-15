@@ -216,3 +216,56 @@ the character); `action_shot` moves (target or yaw; `"gait": "none"` stands), op
 (`"cam": "lock" | "side" | "front" | "follow"`); triggers `none` / `none_land` move without a shot;
 `record_start {"fps":30}` / `record_stop` switch to a fixed time step and dump one viewport PNG per frame, which
 `run_walk.sh` encodes to `<out>/sequence.mp4` (keeping every 10th frame in `frames_keep/`).
+
+## Milestone 4: signs of life (`run_import_ambient.sh`, `AmbientLoops.json`, `UAmbientSubsystem`)
+<!-- OWNER: builder-B4 (ambient) -->
+
+Students walking fixed waypoint loops on the campus, with footsteps and an outdoor ambience decoded from the game's own
+audio. No schedules, no AI, no pathfinding: a loop is a list of points.
+
+    # 1. importer side (git-ignored outputs in imported/)
+    python3 -m tools.importers audio extract FeetAll
+    python3 -m tools.importers audio extract Ambs --names 'NewSchoolOutdoor_F|Birds01'
+    for m in GN_Boy01 GN_Boy02 GN_Asiangirl GN_Greekboy NDH3_Bucky PFH1_Seth; do
+      python3 -m tools.importers ped $m --anims IDLE PLAYERWALK PLAYERRUN RUNFAST IDLEJUMP JOGJUMP_L JOGJUMP_R FALL FALL_LAND PLAY_LAND_HURT --root-motion inplace
+    done
+    # 2. UE side (needs /Game/Imported/Maps/Bullworth from run_import.sh; ~30 s)
+    tools/ue/run_import_ambient.sh                  # students + audio; --steps students | audio
+    # 3. evidence
+    BR_EXTRA_ARGS="-BRAmbientCam=nerd_bucky:9,boy01:9" tools/ue/run_walk.sh --script tools/ue/walk_m4_sequence.json --out ~/bully-remake-evidence/m4/sequence --res 1280x720 --label bully-ambient
+
+**Students** (`students[]` in `unreal/BullyRemake/Config/AmbientLoops.json`; IDE rows of `Objects/default.ide`): `GN_Boy01`,
+`GN_Boy02`, `GN_Asiangirl`, `GN_Greekboy` (generic students), `NDH3_Bucky` (nerd), `PFH1_Seth` (prefect). All ped NIFs have
+the same 36-joint skeleton and use the same C_Player clip bank (INFERRED: the faction `F_*` groups hold fight/ambient
+clips, the locomotion tree uses C_Player). `import_ambient.py` runs `import_character.py` once per student, so each gets
+its own `/Game/Imported/Characters/<Model>/{SK_,SKEL_,PHYS_}<Model>` and a 10-clip `Anims/` (a shared Jimmy skeleton would
+force Jimmy's bone offsets on every body). `UBullyAnimInstance` now resolves its clips from the mesh's own folder.
+
+**Walkers** (`AAmbientWalker : ABullyCharacter`): the same capsule, movement and C++ locomotion as Jimmy. Walks `Waypoints`
+at `speed_cm_s` (walk clip: measured 2.05 m/s authored, set to 1.7-2.0 here), idles `idle_min..idle_max` s at each
+waypoint, real collision with the level (walkers' capsules overlap pawns: they neither block each other nor the player). A walker that makes < 25 % of
+the expected progress for 3 s skips its waypoint and logs `BR_AMBIENT STUCK`. `UAmbientSubsystem` (world subsystem, active on
+`*Bullworth*` when the JSON exists; `-BRNoAmbient` disables) spawns them at BeginPlay and runs `BR_AMBIENT path-check`: a
+ground trace per waypoint and a capsule sweep per segment (capsule lifted by the 45 cm step height) against the level.
+
+**Loops** (UE cm, `[x, y, ground z]`): `plaza_ew` (4 pts, 45 m legs), `central_walk` (2 pts, out and back), `crossing`
+(2 pts), `front_of_building` (raised front terrace, z 860), `gate_approach` (outside the gates), `inner_courtyard`.
+Authoring aid: `tools/ue/run_ambient_probe.sh X0 Y0 X1 Y1 STEP [ZTOP ZBOTTOM]` (headless, `-nullrhi`) logs an ASCII
+walkability map (`.` open, `,` sloped, `#` capsule blocked, `_` no ground) plus ground heights, from which the loops were
+picked with >= 1 m clearance. The probe maps the whole courtyard (x 19000-31500, y 3000-12000) in ~2 min.
+
+**Audio**: `import_ambient.py` imports the decoded WAVs as SoundWave assets (`/Game/Imported/Audio/<bank>/<name>`;
+ambience waves `looping=True`). `UBullyFootstepComponent` (on every walker and on the player pawn) detects foot plants
+from the ankle bones of the playing animation (a foot's height drops within 3.5 cm of the lowest ankle height seen),
+plays a random one-shot (never the same twice in a row, pitch +-6 %, volume 0.85-1.0 x 0.8, linear attenuation 1.5 to 23.5 m)
+and logs `BR_AUDIO step`. `AAmbientSoundActor` loops `NewSchoolOutdoor_F` (stereo school outdoor ambience) and `Birds01`
+at the front courtyard (inner 25 m, falloff 90 m). Runs use `-NoSound` (no audio device), so the evidence for playback is
+the log (`BR_AUDIO ambient loop play ... audioDevice=0`, one `BR_AUDIO step` per foot plant), not captured sound.
+
+**Evidence camera** (`-BRAmbientCam=`, passed through `BR_EXTRA_ARGS`): `<student>:<seconds>` chases a walker (3.5 m behind-left,
+chest height, FOV 70), `fixed:x:y:z:lookX:lookY:lookZ:<seconds>` holds a free camera; entries cycle. The walk runner's
+`record_start/record_stop` and `shot` steps capture whatever the view target shows.
+
+Known: walkers and the player pass through each other (no ped-ped avoidance);
+all footsteps are the cement set (no surface probe); no start/stop/turn clips (walkers turn in place on the C_Player
+locomotion blend); `front_of_building` sits on a raised terrace the player reaches by stairs (not path-checked across levels).

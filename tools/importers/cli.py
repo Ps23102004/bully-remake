@@ -140,6 +140,30 @@ def cmd_ped(a) -> int:
     return 1 if problems else 0
 
 
+def cmd_audio(a) -> int:
+    from . import audio
+    install = resolve_install(a.install)
+    if a.action == "survey":
+        r = audio.survey(install)
+        r["streams"] = audio.survey_streams(install)
+        print(json.dumps(r, indent=1))
+        return 0
+    if a.action == "list":
+        for p in audio.sea_files(install):
+            if a.banks and p.stem.lower() not in {b.lower() for b in a.banks}:
+                continue
+            b = audio.parse_sea(p)
+            print(f"# {p.stem}: bank '{b.bank_name}', {len(b.entries)} entries")
+            for e in b.entries:
+                print(f"{e.index:4d} {e.name:40s} {e.seconds:7.3f}s {e.sample_rate:6d} Hz {e.channels}ch "
+                      f"{'adpcm' if e.tag == 2 else e.tag}")
+        return 0
+    out = os.path.join(a.out, "audio")
+    man = audio.extract(install, out, a.banks or None, a.names, log=lambda m: print(m, file=sys.stderr))
+    print(json.dumps({"out": out, "wavs": man["count"]}))
+    return 0
+
+
 def cmd_anim(a) -> int:
     from .agr import arrow_displacement, parse_agr
     from .ped import load_hxd, read_group_agr
@@ -279,6 +303,12 @@ def main(argv=None) -> int:
     p.add_argument("group", nargs="?", help="group name, e.g. C_Player (omit to list groups)")
     p.add_argument("--hxd", default="MAINPED")
     p.set_defaults(fn=cmd_anim)
+
+    p = sub.add_parser("audio", help="audio/xact/*.SEA sound banks: survey, list, or decode to WAV (imported/audio/)")
+    p.add_argument("action", choices=["survey", "list", "extract"])
+    p.add_argument("banks", nargs="*", help="bank stems, e.g. FeetAll Birds Wind, or streamed Ambs/Cuts/Music/Speech (default: all .SEA)")
+    p.add_argument("--names", help="regex on wave names (extract only)")
+    p.set_defaults(fn=cmd_audio)
 
     p = sub.add_parser("nft", help="decode .nft texture dictionaries to PNG")
     p.add_argument("names", nargs="+", help="World.img .nft names or paths to loose .nft/.txd files")
