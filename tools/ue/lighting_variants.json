@@ -25,8 +25,9 @@
     "LOBBY02"
    ],
    "texture_regex": "SC28_tile_01",
-   "roughness": 0.22,
-   "specular": 0.6
+   "roughness": 0.45,
+   "specular": 0.35,
+   "_note": "polish1: roughness 0.22 -> 0.45, specular 0.6 -> 0.35 to tone down the sharp window glints Lumen mirrored on the lobby floor (GLITCHES.md 5); ESTIMATE, confirm by eye."
   },
   "lights": [
    {
