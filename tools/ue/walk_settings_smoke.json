@@ -1,0 +1,13 @@
+{
+ "_owner": "settings-menu",
+ "_note": "Renderer-free smoke for the Esc settings menu. Run: BR_EXTRA_ARGS=-BRSettingsSmoke tools/ue/run_walk_nullrhi.sh --script tools/ue/walk_settings_smoke.json --out ~/bully-remake-evidence/settings. The controller's -BRSettingsSmoke ticker opens/changes/closes the menu and logs BR_SETTINGS lines.",
+ "warmup_seconds": 5,
+ "settle_seconds": 1,
+ "max_compile_wait_seconds": 1800,
+ "exec": [],
+ "steps": [
+  { "do": "log", "name": "spawn" },
+  { "do": "wait", "seconds": 12 },
+  { "do": "log", "name": "end" }
+ ]
+}

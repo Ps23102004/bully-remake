@@ -1,0 +1,53 @@
+// OWNER: settings-menu
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameFramework/PlayerController.h"
+#include "BullyPlayerController.generated.h"
+
+class SWidget;
+class ABullyCharacter;
+
+/**
+ * Player controller with the Esc pause/settings menu. The menu is a pure-C++ Slate overlay (SBullySettingsMenu,
+ * BullyPlayerController.cpp) added to the game viewport, so it works in a cooked -game run with no UMG asset.
+ *
+ * Open: world paused, look/move ignored, mouse cursor shown, input mode Game-and-UI with the mouse NOT locked to the
+ * viewport (the cursor is free to leave the window and click other apps). Closed (Esc / Resume): unpaused, cursor hidden,
+ * input mode Game-only (mouse captured for look again).
+ */
+UCLASS()
+class ABullyPlayerController : public APlayerController
+{
+	GENERATED_BODY()
+
+public:
+	virtual void SetupInputComponent() override;
+	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
+
+	/** Console: `BullyMenu`. Esc is bound in SetupInputComponent. */
+	UFUNCTION(Exec, BlueprintCallable, Category = "Bully|Menu") void ToggleSettingsMenu();
+	UFUNCTION(BlueprintCallable, Category = "Bully|Menu") void OpenSettingsMenu();
+	UFUNCTION(BlueprintCallable, Category = "Bully|Menu") void CloseSettingsMenu();
+	UFUNCTION(BlueprintCallable, Category = "Bully|Menu") bool IsSettingsMenuOpen() const { return SettingsWidget.IsValid(); }
+
+	/** Look settings, as sensitivity multipliers (ABullyCharacter::MinLookSens..MaxLookSens). Applied live; Save persists. */
+	float GetLookX() const;
+	float GetLookY() const;
+	bool GetInvertY() const;
+	void SetLookX(float V);
+	void SetLookY(float V);
+	void SetInvertY(bool bInvert);
+	void SaveLook();
+
+private:
+	void ApplyLook(float X, float Y, bool bInvert);
+	void RunSettingsSmoke();
+
+	TSharedPtr<SWidget> SettingsWidget;
+	double LastToggleRealTime = 0.0;
+	FTSTicker::FDelegateHandle SmokeTicker;
+	float SmokeTime = 0.f;
+	int32 SmokeStep = 0;
+};

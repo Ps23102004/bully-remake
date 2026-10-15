@@ -19,6 +19,9 @@
 #include "InputActionValue.h"
 #include "InputCoreTypes.h"
 #include "InputMappingContext.h"
+#include "HAL/FileManager.h"
+#include "Misc/Paths.h"
+#include "Misc/ConfigCacheIni.h"
 #include "InputModifiers.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -399,6 +402,8 @@ void ABullyCharacter::BuildInputAssets()
 	MoveAction->ValueType = EInputActionValueType::Axis2D;
 	LookAction = NewObject<UInputAction>(this, TEXT("IA_Look"));
 	LookAction->ValueType = EInputActionValueType::Axis2D;
+	LookPadAction = NewObject<UInputAction>(this, TEXT("IA_LookPad"));
+	LookPadAction->ValueType = EInputActionValueType::Axis2D;
 	JumpAction = NewObject<UInputAction>(this, TEXT("IA_Jump"));
 	JumpAction->ValueType = EInputActionValueType::Boolean;
 	SprintAction = NewObject<UInputAction>(this, TEXT("IA_Sprint"));
@@ -419,14 +424,13 @@ void ABullyCharacter::BuildInputAssets()
 	// so the walk threshold is applied to the rescaled magnitude.
 	MappingContext->MapKey(MoveAction, EKeys::Gamepad_Left2D).Modifiers.Add(Deadzone(StickDeadZone));
 
+	// Mouse: raw per-frame counts (scaled to degrees in OnLook). Gamepad right stick is its own action: it is a rate
+	// (-1..1 held), not a delta, so it is scaled by deg/s * dt in OnLookPad and never mixed with the mouse scale.
 	MappingContext->MapKey(LookAction, EKeys::Mouse2D).Modifiers.Add(Negate(false, true, false));
 	{
-		FEnhancedActionKeyMapping& R = MappingContext->MapKey(LookAction, EKeys::Gamepad_Right2D);
+		FEnhancedActionKeyMapping& R = MappingContext->MapKey(LookPadAction, EKeys::Gamepad_Right2D);
 		R.Modifiers.Add(Deadzone(0.2f));
 		R.Modifiers.Add(Negate(false, true, false));
-		UInputModifierScalar* Sc = NewObject<UInputModifierScalar>(this);
-		Sc->Scalar = FVector(1.5f, 1.5f, 1.f);
-		R.Modifiers.Add(Sc);
 	}
 
 	MappingContext->MapKey(JumpAction, EKeys::SpaceBar);
@@ -467,6 +471,7 @@ void ABullyCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 		EIC->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ABullyCharacter::OnMove);
 		EIC->BindAction(MoveAction, ETriggerEvent::Completed, this, &ABullyCharacter::OnMoveCompleted);
 		EIC->BindAction(LookAction, ETriggerEvent::Triggered, this, &ABullyCharacter::OnLook);
+		EIC->BindAction(LookPadAction, ETriggerEvent::Triggered, this, &ABullyCharacter::OnLookPad);
 		EIC->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
 		EIC->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
 		EIC->BindAction(SprintAction, ETriggerEvent::Started, this, &ABullyCharacter::OnSprint);
@@ -498,11 +503,62 @@ void ABullyCharacter::OnMove(const FInputActionValue& Value)
 
 void ABullyCharacter::OnLook(const FInputActionValue& Value)
 {
-	const FVector2D V = Value.Get<FVector2D>() * LookSensitivity;
+	// raw Mouse2D counts -> degrees. Y was negated by the mapping; invert flips it back.
+	const float Base = LookBaseDegPerCount * LookSensitivity;
+	const FVector2D In = Value.Get<FVector2D>();
+	const FVector2D V(In.X * Base * LookSensitivityX, In.Y * Base * LookSensitivityY * (bInvertLookY ? -1.f : 1.f));
 	if (!V.IsNearlyZero())
 	{
 		NoteLookInput();
 	}
 	AddControllerYawInput(V.X);
 	AddControllerPitchInput(V.Y);
+}
+
+void ABullyCharacter::OnLookPad(const FInputActionValue& Value)
+{
+	constexpr float DefaultLookSensX = 0.6f, DefaultLookSensY = 0.5f;   // shipped defaults (the 1.0x point for gamepad rates)
+	// stick (rate) -> degrees this frame. The menu sliders scale it relative to their defaults so one slider moves both devices.
+	const float Dt = GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.f;
+	const FVector2D In = Value.Get<FVector2D>();
+	const FVector2D V(In.X * GamepadLookYawRate * Dt * LookSensitivity * (LookSensitivityX / DefaultLookSensX),
+	                  In.Y * GamepadLookPitchRate * Dt * LookSensitivity * (LookSensitivityY / DefaultLookSensY) * (bInvertLookY ? -1.f : 1.f));
+	if (!V.IsNearlyZero())
+	{
+		NoteLookInput();
+	}
+	AddControllerYawInput(V.X);
+	AddControllerPitchInput(V.Y);
+}
+
+void ABullyCharacter::SetLookSettings(float NewX, float NewY, bool bNewInvertY)
+{
+	LookSensitivityX = FMath::Clamp(NewX, MinLookSens, MaxLookSens);
+	LookSensitivityY = FMath::Clamp(NewY, MinLookSens, MaxLookSens);
+	bInvertLookY = bNewInvertY;
+	// future pawns (respawn / travel) pick the live values up from the class defaults
+	if (ABullyCharacter* CDO = GetMutableDefault<ABullyCharacter>(); CDO != this)
+	{
+		CDO->LookSensitivityX = LookSensitivityX;
+		CDO->LookSensitivityY = LookSensitivityY;
+		CDO->bInvertLookY = bInvertLookY;
+	}
+}
+
+void ABullyCharacter::SaveLookSettings() const
+{
+	// The user layer is the LAST file in the Game.ini hierarchy (Saved/Config/<platform>/Game.ini): it overrides
+	// Config/DefaultGame.ini on the next launch and is never checked in. Edit only our three keys in that file.
+	const FString Path = FConfigCacheIni::GetDestIniFilename(TEXT("Game"), nullptr, *FPaths::GeneratedConfigDir());
+	FConfigFile File;
+	if (IFileManager::Get().FileExists(*Path))
+	{
+		File.Read(Path);
+	}
+	const TCHAR* Section = TEXT("/Script/BullyRemake.BullyCharacter");
+	File.SetFloat(Section, TEXT("LookSensitivityX"), LookSensitivityX);
+	File.SetFloat(Section, TEXT("LookSensitivityY"), LookSensitivityY);
+	File.SetBool(Section, TEXT("bInvertLookY"), bInvertLookY);
+	const bool bOk = File.Write(Path);
+	UE_LOG(LogBullyChar, Display, TEXT("BR_SETTINGS saved look X=%.3f Y=%.3f invertY=%d -> %s (write ok=%d exists=%d)"), LookSensitivityX, LookSensitivityY, bInvertLookY ? 1 : 0, *Path, bOk ? 1 : 0, IFileManager::Get().FileExists(*Path) ? 1 : 0);
 }
