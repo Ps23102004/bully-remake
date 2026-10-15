@@ -281,6 +281,36 @@ def cmd_world(a) -> int:
     return 0 if report["models_converted"] else 1
 
 
+def cmd_trigger(a) -> int:
+    from . import trigger as T
+    install = resolve_install(a.install)
+    with _archive(install, T.ARCHIVE) as arch:
+        files = T.read_archive(arch)
+    if a.list:
+        for stem, f in files.items():
+            c = f["counts"]
+            print(f"{stem:32s} path {c['path']:3d} point {c['point']:3d} trigger {c['trigger-volume']:3d} "
+                  f"poi {c['poi']:3d} orphan-perimeters {len(f['orphan_perimeters']):3d}"
+                  + (f"  !{len(f['warnings'])} warnings" if f["warnings"] else ""))
+        print(json.dumps(T.summary(files)), file=sys.stderr)
+        return 0
+    folder = os.path.join(a.out, "triggers")
+    T.write_json(os.path.join(folder, "day_one.json"), T.day_one(files))
+    print(f"day_one -> {os.path.join(folder, 'day_one.json')}")
+    for stem in a.files or []:
+        key = next((k for k in files if k.lower() == stem.lower()), None)
+        if key is None:
+            print(f"{stem}: not in {T.ARCHIVE}", file=sys.stderr)
+            return 1
+        T.write_json(os.path.join(folder, key + ".json"), files[key])
+        print(f"{key} -> {os.path.join(folder, key + '.json')}")
+    if a.all:
+        T.write_json(os.path.join(folder, "all.json"), {"source": T.ARCHIVE, "summary": T.summary(files), "files": files})
+        print(f"all -> {os.path.join(folder, 'all.json')}")
+    print(json.dumps(T.summary(files)))
+    return 0
+
+
 def cmd_validate(a) -> int:
     t = time.time()
     folder = os.path.join(a.out, "models")
@@ -366,6 +396,12 @@ def main(argv=None) -> int:
     p.add_argument("--file-space", action="store_true", help="keep root/model node transforms in models")
     p.add_argument("--convert-invisible", action="store_true", help="also convert nogo/walkable/_nd markers")
     p.set_defaults(fn=cmd_world)
+
+    p = sub.add_parser("trigger", help="DAT/Trigger.img mission points, paths, trigger volumes -> JSON (always writes day_one.json)")
+    p.add_argument("--list", action="store_true", help="list every .dat with entity counts and warnings, write nothing")
+    p.add_argument("--files", nargs="*", help="also write <out>/triggers/<stem>.json for these .dat stems")
+    p.add_argument("--all", action="store_true", help="also write all.json with every .dat file")
+    p.set_defaults(fn=cmd_trigger)
 
     p = sub.add_parser("validate", help="structurally validate every glTF under --out/models")
     p.set_defaults(fn=cmd_validate)

@@ -140,3 +140,21 @@ def test_ped_head_model_replaces_the_base_head(world_img, tmp_path):
     assert any("head cut out (685 of 697 vertices" in w for w in r.warnings)
     assert not any("disagree" in w for w in r.warnings)                  # IBMs equal: no second skin
     assert r.bind_vs_stored_max_m < 0.004                                # skeleton poses differ by 2.3 mm at most
+
+
+def test_trigger_img_day_one():
+    from tools.importers import trigger as T
+    from tools.importers.img import ImgArchive
+    with ImgArchive(os.path.join(INSTALL, "DAT", "Trigger.img")) as a:
+        files = T.read_archive(a)
+    s = T.summary(files)
+    assert (s["files"], s["path"], s["point"], s["trigger-volume"], s["poi"]) == (410, 1543, 4188, 2546, 338)
+    assert files["1_01"]["counts"] == {"path": 11, "point": 28, "trigger-volume": 7, "poi": 0}
+    day = T.day_one(files)
+    ents = {e["name"]: e for e in day["missions"]["1_01"]["entities"]}
+    gate = ents["tschool_FrontGate"]
+    assert abs(gate["location_game"][0] - 301.5) < 0.1 and abs(gate["location_game"][1] + 72.5) < 0.1
+    start = ents["1_01_Player_Start"]
+    assert abs(start["location_cm"][0] - 29836) < 5 and abs(start["location_cm"][1] - 7223) < 5
+    door = {e["id"]: e for e in day["extras"]["tschool_doors"]}["tschool_doors/trigger-volume/DT_tschool_BoysDormL"]
+    assert abs(door["location_game"][0] - 271.1) < 0.1 and abs(door["location_game"][1] + 122.4) < 0.1

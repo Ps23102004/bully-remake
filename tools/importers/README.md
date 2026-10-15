@@ -27,6 +27,9 @@ Set one of these. The path is never hard-coded.
     python3 -m tools.importers nif SC1b_bldg_main LOBBY01
     python3 -m tools.importers nft G_scBuilding           # or a path to a loose .nft/.txd
     python3 -m tools.importers ipb tschool ischool
+    python3 -m tools.importers trigger                    # DAT/Trigger.img -> imported/triggers/day_one.json (missions 1_01 + 1_02 slice)
+    python3 -m tools.importers trigger --list             # every .dat with point/path/trigger/POI counts
+    python3 -m tools.importers trigger --files 1_01 --all # also per-file JSON and all.json (all 410 files, ~14 MB)
     python3 -m tools.importers ped PLAYER                  # Jimmy: skinned glTF + locomotion clips
     python3 -m tools.importers ped PLAYER --anims '*' --sheet ~/bully-remake-evidence/m3/sheet.png
     python3 -m tools.importers anim                       # list MAINPED.HXD animation groups
