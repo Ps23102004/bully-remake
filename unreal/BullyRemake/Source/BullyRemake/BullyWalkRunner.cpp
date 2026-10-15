@@ -49,6 +49,12 @@ void UBullyWalkRunner::Initialize(FSubsystemCollectionBase& Collection)
 	bActive = LoadScript(File);
 	UE_LOG(LogBullyWalk, Display, TEXT("BR_WALK runner %s: %d steps from %s -> %s"),
 		bActive ? TEXT("active") : TEXT("INACTIVE (bad script)"), Steps.Num(), *File, *OutDir);
+	if (!bActive)
+	{
+		// an evidence run with no script must not idle forever as a headless game
+		UE_LOG(LogBullyWalk, Error, TEXT("BR_WALK no usable script; requesting exit"));
+		FPlatformMisc::RequestExit(false);
+	}
 }
 
 void UBullyWalkRunner::Deinitialize()
@@ -318,7 +324,7 @@ bool UBullyWalkRunner::TickStep(UWorld* World, ABullyCharacter* Pawn, FBullyWalk
 				Pawn->AddMovementInput(Dir.GetSafeNormal(), 1.f);
 			}
 			// camera: follow = the character's own follow cam; lock = behind the travel direction; side = 90 deg off it
-			if (PC && S.Cam != TEXT("follow") && Dir.SizeSquared() > 1.f)
+			if (PC && S.Cam != TEXT("follow") && Dir.SizeSquared() > 0.01f)
 			{
 				const float Yaw = Dir.Rotation().Yaw + (S.Cam == TEXT("side") ? 90.f : S.Cam == TEXT("front") ? 180.f : 0.f);
 				PC->SetControlRotation(FRotator(S.Pitch, Yaw, 0.f));

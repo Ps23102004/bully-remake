@@ -132,3 +132,87 @@ entries, no code. Interiors stay in their distant pockets (the original game's o
 real pawn with movement input (so collision and the door triggers are exercised for real), steps: `walk_to`,
 `wait_door`, `shot`, `face`, `teleport`, `trace_ground`, `jump`, `log`; writes PNGs and `walk_result.json` with
 STUCK/TIMEOUT reports. Same safety envelope as `run_shots.sh` (GPU slot label `bully-doors`, offscreen, window watch).
+
+## Milestone 3: Jimmy (`run_import_character.sh`, `BullyCharacter`, `BullyAnimInstance`, `walk_m3.json`)
+<!-- OWNER: builder-B3 (jimmy) -->
+
+    python3 -m tools.importers ped PLAYER --anims '*' --root-motion inplace     # skinned glTF + 439 clips
+    tools/ue/run_import_character.sh                                            # ~25 s cold, ~10 s re-run
+    tools/ue/run_walk.sh --script tools/ue/walk_m3.json --out ~/bully-remake-evidence/m3 --res 1280x720 --label bully-jimmy
+
+**Import** (`import_character.py`, pythonscript commandlet, same envelope as `run_import.sh`, GPU slot label
+`bully-jimmy`). Pass 1: the glTF (animations stripped, materials renamed `M000..`, no images) through an override
+`InterchangeGenericAssetsPipeline` (skeletal only, bind pose = reference pose, physics asset on) ->
+`/Game/Imported/Characters/Jimmy/SK_Jimmy`, `SKEL_Jimmy`, `PHYS_Jimmy`; slots bound to `MI_Player_0N_d` instances of
+`M_Bully_Character` (the `M_Bully_Opaque` graph plus `bUsedWithSkeletalMesh`, kept separate so the level's masters
+never compile skinned permutations). Pass 2: batches of 60 clips, `import_only_animations` onto `SKEL_Jimmy`, 60 Hz,
+frame-snapped (HXD play durations are not frame multiples) -> `.../Jimmy/Anims/<CLIP>` (all 439). Interchange turns
+spaces in joint names into hyphens (`Root L Thigh` -> `Root-L-Thigh`). Idempotent through `br_src_sha1` tags.
+Verification in the report (`Saved/BullyImport/character_report_latest.json`): 36 bones; for 14 locomotion clips,
+36 bone tracks each and the rotation change of 5 bones between t=0 and t=L/2 equals the glTF keys' (max mismatch
+0.2 deg; a T-posed clip would read 0). Jimmy is bald: the PLAYER model has no hair mesh (haircuts are OPEN, importer
+notes) - not chased.
+
+**Character** (`ABullyCharacter`, replaces `ABullyPawn`; `[CoreRedirects]` in DefaultEngine.ini). Mesh yaw +90 turns
+the clips' forward (game +y = UE -Y) onto actor +X (the bind pose faces the other way; only the clips matter).
+Capsule r 30 / half-height 85 cm (bind pose 1.70 m tall). Falls back to the M2 primitive body if `SK_Jimmy` is
+missing. Every number below is `Config=Game` in `Config/DefaultGame.ini` (`[/Script/BullyRemake.BullyCharacter]`,
+`[/Script/BullyRemake.BullyAnimInstance]`): edit and re-run, no recompile.
+
+Controls: default gait is **run** (full stick or any WASD key); partial stick (< 0.5 after the 0.15 radial dead zone)
+or holding **Left Alt / Left Ctrl** walks; holding **Left Shift / L3 / pad X(Square)** sprints; Space / pad A jumps.
+The console original charges sprint by tapping (`SprintIncrementCharge`, tired sprint) - not modelled.
+
+| value | chosen | source / measured |
+|---|---|---|
+| walk | 2.05 m/s (analog 1.30-2.05) | PLAYERWALK root motion 2.05; action tree WalkBasic 1.3-1.8 m/s; planted-foot speed 1.79 |
+| run | 3.61 m/s | PLAYERRUN root motion 3.61; tree 3.6-3.9; foot 3.52 |
+| sprint | 8.01 m/s | RUNFAST root motion 8.01; tree 6.5-8.8; foot 5.08 (see below) |
+| accel to speed | walk 0.2 s, run/sprint 0.333 s | GlobalLoco param 68 |
+| stop | walk 0.3 s, run+ 0.333 s (constant decel) | param 72 |
+| turn rate | walk 573, run 315, sprint 344, air 46 deg/s | param 44 (10 / 5.5 / 6 / 0.8 rad/s) |
+| jump apex | 1.10 m (vz 464 cm/s at g 9.8) | LocomotionJump param 24 = 1.10 (INFERRED as height); gravity OPEN, UE default |
+| air control | 0.15 | air nodes steer at 0.8 rad/s |
+| fall damage | > 5 m drop: log + PLAY_LAND_HURT (stub) | Fall_Damage condition DistToGround > 5.0 |
+
+Clip speeds were chosen (task rule) so the gait speeds equal the animations' authored travel. **Measured caveat:**
+the ARROW travel is not the foot-lock speed. FK on the clips gives the planted foot's backward speed relative to the
+body: walk 1.79, run 3.52, sprint 5.08 m/s; with `--root-motion raw` the sprint clip's planted foot slides forward
+2.9 m/s in the authored data itself. The anim instance therefore syncs play rate to the foot speeds (`*FootSpeed`):
+feet stay planted at every speed, and the legs cycle 1.15x (walk), 1.03x (run), 1.58x (sprint) the authored rate at the
+gait speeds. The action tree's own sprint range (6.5-8.8 m/s) implies 1.28-1.73x, so the fast sprint cadence is
+probably original; setting `SprintFootSpeed=801.2` restores the authored rate (with the authored slide). The tree and the
+foot data both point to a 1.8 m/s top walk: `WalkSpeed=180` is the alternative if the critic finds the walk hurried.
+
+**Animation** (`UBullyAnimInstance`, C++ only, no AnimBP asset; a custom `FAnimInstanceProxy::Evaluate` samples the
+clips and blends them n-way). States:
+
+- **Loco**: idle <-> PLAYERWALK <-> PLAYERRUN <-> RUNFAST by measured ground speed, anchors 0 / 2.05 / 3.61 / 8.01 m/s,
+  idle fully out at 0.6 m/s. One shared phase (0 = left-foot mid-stance; per-clip offsets 0.744 / 0.591 / 0.510 measured
+  by FK) advanced at speed / blended stride, so blended cycles keep their feet in step.
+- **Jump**: IDLEJUMP standing (pelvis rise clamped to the reference height: the capsule already jumps), JOGJUMP_L/_R
+  when moving (the foot ahead in the phase picks the side). Take-off part (to 0.10 s / 0.22 s) at rate 1, air part
+  (to 0.58 s / 0.56 s) time-scaled to the predicted landing and held while airborne.
+- **Fall**: FALL loop after 0.25 s off a ledge or 1.2 m below the take-off height. **Land**: the jump clip's own landing
+  (rest of the clip), FALL_LAND when still, the JOGJUMP landing part fading into loco when moving, PLAY_LAND_HURT
+  over 5 m. State changes cross-fade 0.15 s (fall 0.3 s, land 0.06 s); outgoing clips keep playing while they fade.
+
+Not yet: start/stop clips (PLAYERRUN_START, RUNSTOP*), turn-in-place, strafing, sprint meter, crouch, climbs.
+`BR_CHAR t=...` log lines (1 Hz) report speed, gait, anim state, layers and the **median horizontal speed of the
+planted foot** (should be ~0; transitions and slopes add noise).
+
+**Camera** (spring arm, `Bully|Camera`): distance 450 cm, look-at 140 cm above the feet, resting pitch -8 deg (lens
+~2.0 m up, ~0.4 m above Jimmy's head), horizontal FOV 75, location lag speed 8 (max 80 cm), no rotation lag; centred
+(no shoulder offset). Auto-follow: after 1.0 s without look input while moving, yaw swings behind the travel direction
+at 120 deg/s (scaled by speed; not when running toward the camera) and pitch returns to -8 at 30 deg/s. The original's
+values are OPEN (`CameraDefaultFOV`, FollowCam3Butes); no reference stills were available, so these are a GTA-era
+eyeball, all `Config`.
+
+**Doors** work unchanged (`ABullyDoorLink` now takes `ABullyCharacter`).
+
+**Evidence runner additions** (`UBullyWalkRunner`): `walk_to` takes `"gait"` and `"cam": "follow"` (leave the camera to
+the character); `action_shot` moves (target or yaw; `"gait": "none"` stands), optionally jumps, and on its trigger
+(`time`, `apex`, `air`, `land`) pauses the game, waits `settle_seconds` and takes a high-res shot of the frozen moment
+(`"cam": "lock" | "side" | "front" | "follow"`); triggers `none` / `none_land` move without a shot;
+`record_start {"fps":30}` / `record_stop` switch to a fixed time step and dump one viewport PNG per frame, which
+`run_walk.sh` encodes to `<out>/sequence.mp4` (keeping every 10th frame in `frames_keep/`).

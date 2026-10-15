@@ -32,6 +32,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -f "$SHOTS" ] || br_die "script $SHOTS missing"
+SHOTS="$(cd "$(dirname "$SHOTS")" && pwd)/$(basename "$SHOTS")"   # the engine's cwd is not ours
+python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$SHOTS" || br_die "script $SHOTS is not valid JSON"
 [ -f "$BR_REPO/unreal/BullyRemake/Content/Imported/Maps/Bullworth.umap" ] || br_die "level missing: run tools/ue/run_import.sh first"
 RX=${RES%x*}; RY=${RES#*x}
 
