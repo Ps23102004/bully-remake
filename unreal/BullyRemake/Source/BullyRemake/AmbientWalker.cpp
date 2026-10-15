@@ -3,14 +3,20 @@
 
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "EngineUtils.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
+#include "Kismet/GameplayStatics.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogAmbient, Log, All);
 
 AAmbientWalker::AAmbientWalker()
 {
-	// No controller: the movement component must still run, and walkers do not block each other (pawn overlap).
+	// No controller: the movement component must still run.
 	GetCharacterMovement()->bRunPhysicsWithNoController = true;
-	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	// Solid for the player: a normal Pawn capsule (Pawn blocks Pawn). Walker <-> walker passing is allowed per pair in
+	// BeginPlay (IgnoreActorWhenMoving), NOT through a custom channel: the level's meshes answer some channels
+	// differently, and a walker of its own object type was stopped at corners that Pawn capsules walk through.
 	bSnapToGroundOnBeginPlay = true;
 	bCameraAutoFollow = false;
 }
@@ -18,6 +24,18 @@ AAmbientWalker::AAmbientWalker()
 void AAmbientWalker::BeginPlay()
 {
 	Super::BeginPlay();
+	// walkers pass through each other (both directions, every pair): see the class comment
+	if (UWorld* W = GetWorld())
+	{
+		for (TActorIterator<AAmbientWalker> It(W); It; ++It)
+		{
+			if (*It != this)
+			{
+				GetCapsuleComponent()->IgnoreActorWhenMoving(*It, true);
+				It->GetCapsuleComponent()->IgnoreActorWhenMoving(this, true);
+			}
+		}
+	}
 	SetScriptedGait(EBullyGait::Walk);   // WalkSpeed (set by the spawner) is the loop speed
 	NextIndex = Waypoints.Num() ? StartIndex % Waypoints.Num() : 0;
 	LastPos = ProgressRefPos = GetActorLocation();
@@ -33,6 +51,89 @@ void AAmbientWalker::Advance()
 	if (NextIndex == StartIndex % Waypoints.Num()) { ++LoopsCompleted; }
 }
 
+bool AAmbientWalker::TickYield(double Now, const FVector& Pos)
+{
+	static const bool bDisabled = FParse::Param(FCommandLine::Get(), TEXT("BRNoYield"));   // A/B switch for the logic runs
+	if (bDisabled) { return false; }
+	UWorld* W = GetWorld();
+	const APawn* Player = W ? UGameplayStatics::GetPlayerPawn(W, 0) : nullptr;
+	if (!Player || Player == this)
+	{
+		YieldPhase = 0;
+		return false;
+	}
+	FVector ToPlayer = Player->GetActorLocation() - Pos;
+	ToPlayer.Z = 0.f;
+	const float Dist = ToPlayer.Size();
+	MinPlayerDist = FMath::Min(MinPlayerDist, Dist);
+	const FVector Away = Dist > 1.f ? -ToPlayer / Dist : FVector::ForwardVector;
+	if (YieldPhase == 0)
+	{
+		if (Now < YieldCooldownUntil || Dist > YieldRadius)
+		{
+			return false;
+		}
+		FVector PV = Player->GetVelocity();
+		PV.Z = 0.f;
+		const float Closing = FVector::DotProduct(PV, Away);                  // player speed toward the walker
+		FVector MyV = GetVelocity();
+		MyV.Z = 0.f;
+		const float Approach = FVector::DotProduct(MyV, -Away);              // walker speed toward the player
+		const float Touch = 2.f * GetCapsuleComponent()->GetScaledCapsuleRadius() + 25.f;
+		if (Dist > Touch && Closing < 60.f && Approach < 60.f)
+		{
+			return false;   // neither is closing in: leave it alone (a player standing next to a walker's path is fine)
+		}
+		// choose the side-step: perpendicular to the line to the player, toward the freer side
+		const FVector Perp(-Away.Y, Away.X, 0.f);
+		const float R = GetCapsuleComponent()->GetScaledCapsuleRadius();
+		const float HH = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+		FVector Best = FVector::ZeroVector;
+		for (const float Sign : { 1.f, -1.f })
+		{
+			const FVector D = Perp * Sign;
+			FHitResult Hit;
+			FCollisionQueryParams P(SCENE_QUERY_STAT(BullyWalkerYield), false, this);
+			P.AddIgnoredActor(Player);
+			const FVector From = Pos + FVector(0.f, 0.f, 45.f);   // lifted by the step height: kerbs are not walls
+			const bool bBlocked = W->SweepSingleByChannel(Hit, From, From + D * 130.f, FQuat::Identity, ECC_Visibility,
+				FCollisionShape::MakeCapsule(R, FMath::Max(R, HH - 45.f)), P);
+			if (!bBlocked) { Best = D; break; }
+		}
+		YieldDir = Best;   // zero vector = nowhere to go: pause only
+		YieldPhase = 1;
+		YieldPhaseEnd = Now + YieldPauseSeconds;
+		++YieldCount;
+		UE_LOG(LogAmbient, Display, TEXT("BR_AMBIENT YIELD #%d %s at %s: player %.0f cm away (closing %.0f, approach %.0f) -> %s"),
+			YieldCount, *GetName(), *Pos.ToString(), Dist, Closing, Approach, YieldDir.IsNearlyZero() ? TEXT("pause only") : *YieldDir.ToString());
+	}
+	if (YieldPhase == 1)
+	{
+		if (Now >= YieldPhaseEnd)
+		{
+			YieldPhase = YieldDir.IsNearlyZero() ? 0 : 2;
+			YieldPhaseEnd = Now + YieldStepSeconds;
+			if (YieldPhase == 0) { YieldCooldownUntil = Now + YieldCooldownSeconds; }
+		}
+		if (YieldPhase == 1)
+		{
+			return true;   // paused: no input
+		}
+	}
+	if (YieldPhase == 2)
+	{
+		if (Now >= YieldPhaseEnd)
+		{
+			YieldPhase = 0;
+			YieldCooldownUntil = Now + YieldCooldownSeconds;
+			return false;
+		}
+		AddMovementInput(YieldDir, 1.f);
+		return true;
+	}
+	return false;
+}
+
 void AAmbientWalker::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);   // keeps the scripted gait applied
@@ -43,7 +144,13 @@ void AAmbientWalker::Tick(float DeltaSeconds)
 	PathWalked += FVector::Dist2D(Pos, LastPos);
 	LastPos = Pos;
 
-	if (bIdling)
+	if (TickYield(Now, Pos))
+	{
+		// yielding: not a stuck candidate, idle timers keep running
+		ProgressRefPos = Pos;
+		ProgressRefTime = Now;
+	}
+	else if (bIdling)
 	{
 		if (Now >= IdleUntil)
 		{
@@ -93,7 +200,7 @@ void AAmbientWalker::Tick(float DeltaSeconds)
 
 void AAmbientWalker::EndPlay(const EEndPlayReason::Type Reason)
 {
-	UE_LOG(LogAmbient, Display, TEXT("BR_AMBIENT SUMMARY %s (%s) loop %s: waypoints reached %d, loops completed %d, stuck %d, walked %.1f m"),
-		*GetName(), *StudentId, *LoopId, WaypointsReached, LoopsCompleted, StuckEvents, PathWalked / 100.f);
+	UE_LOG(LogAmbient, Display, TEXT("BR_AMBIENT SUMMARY %s (%s) loop %s: waypoints reached %d, loops completed %d, stuck %d, yields %d, closest player %.0f cm, walked %.1f m"),
+		*GetName(), *StudentId, *LoopId, WaypointsReached, LoopsCompleted, StuckEvents, YieldCount, MinPlayerDist, PathWalked / 100.f);
 	Super::EndPlay(Reason);
 }

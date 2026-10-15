@@ -1,7 +1,10 @@
 // OWNER: builder-B2 (doors); M3 steps builder-B3 (jimmy)
 #include "BullyWalkRunner.h"
 
+#include "AmbientFootsteps.h"
+#include "AmbientWalker.h"
 #include "BullyAnimInstance.h"
+#include "EngineUtils.h"
 #include "BullyCharacter.h"
 #include "Misc/App.h"
 #include "Components/CapsuleComponent.h"
@@ -118,6 +121,24 @@ bool UBullyWalkRunner::LoadScript(const FString& Path)
 		if (O->TryGetNumberField(TEXT("trigger_time"), D)) { S.TriggerTime = float(D); }
 		if (O->TryGetNumberField(TEXT("after"), D)) { S.After = float(D); }
 		if (O->TryGetNumberField(TEXT("fps"), D)) { S.Fps = float(D); }
+		O->TryGetStringField(TEXT("student"), S.Student);
+		O->TryGetBoolField(TEXT("head_on"), S.bHeadOn);
+		if (O->TryGetNumberField(TEXT("spawn_dist"), D)) { S.SpawnDist = float(D); }
+		const TArray<TSharedPtr<FJsonValue>>* Pts = nullptr;
+		if (O->TryGetArrayField(TEXT("points"), Pts))
+		{
+			for (const TSharedPtr<FJsonValue>& PV : *Pts)
+			{
+				const TArray<TSharedPtr<FJsonValue>>& XY = PV->AsArray();
+				if (XY.Num() >= 2) { S.Points.Add(FVector2D(XY[0]->AsNumber(), XY[1]->AsNumber())); }
+			}
+		}
+		if (O->TryGetNumberField(TEXT("step"), D) && O->HasField(TEXT("x0")))
+		{
+			S.GridStep = float(D);
+			S.GridMin = FVector2D(O->GetNumberField(TEXT("x0")), O->GetNumberField(TEXT("y0")));
+			S.GridMax = FVector2D(O->GetNumberField(TEXT("x1")), O->GetNumberField(TEXT("y1")));
+		}
 		S.bHasPos = O->HasField(TEXT("x")) && O->HasField(TEXT("y"));
 		Steps.Add(S);
 	}
@@ -215,6 +236,93 @@ void UBullyWalkRunner::BeginStep(UWorld* World, ABullyCharacter* Pawn, FBullyWal
 		Pawn->SetScriptedGait(ParseGait(S.Gait, S.bRun));
 		Note(FString::Printf(TEXT("walk_to '%s' from %s to (%.0f,%.0f) gait %d cam %s timeout %.0fs"), *S.Name, *Pawn->GetActorLocation().ToString(), S.Pos.X, S.Pos.Y, int32(Pawn->GetGait()), *S.Cam, S.Seconds));
 	}
+	else if (S.Do == TEXT("surface_probe"))
+	{
+		UBullyFootstepComponent* FC = Pawn->FindComponentByClass<UBullyFootstepComponent>();
+		if (!FC || !UBullyFootstepComponent::TablesAvailable())
+		{
+			++Failures;
+			Note(TEXT("surface_probe FAILED: no footstep component on the player or tables off"));
+		}
+		else
+		{
+			TArray<FVector2D> Pts = S.Points;
+			TArray<FString> Rows;
+			if (S.GridStep > 0.f)
+			{
+				for (float Y = S.GridMin.Y; Y <= S.GridMax.Y + 0.1f; Y += S.GridStep)
+				{
+					FString Row;
+					for (float X = S.GridMin.X; X <= S.GridMax.X + 0.1f; X += S.GridStep)
+					{
+						FHitResult H;
+						FCollisionQueryParams P(SCENE_QUERY_STAT(BullyProbeGround), true, Pawn);
+						TCHAR C = '_';
+						if (World->LineTraceSingleByChannel(H, FVector(X, Y, S.bHasZ ? S.Pos.Z : 3000.f), FVector(X, Y, -500.f), ECC_Visibility, P))
+						{
+							FString Why; bool bInt = false;
+							const FString Sf = FC->ProbeSurface(H.ImpactPoint, Why, bInt);
+							C = Sf.IsEmpty() ? TCHAR('?') : Sf[0];
+						}
+						Row.AppendChar(C);
+					}
+					Rows.Add(FString::Printf(TEXT("y=%6.0f %s"), Y, *Row));
+				}
+				Note(FString::Printf(TEXT("surface_probe '%s' grid x %.0f..%.0f step %.0f (first letter of the surface: c cement, g grass, d dirt/dock, m mud/metal, l lino, f floor, _ no ground)"), *S.Name, S.GridMin.X, S.GridMax.X, S.GridStep));
+				for (const FString& R : Rows) { Note(R); }
+			}
+			for (const FVector2D& Pt : Pts)
+			{
+				FHitResult H;
+				FCollisionQueryParams P(SCENE_QUERY_STAT(BullyProbeGround), true, Pawn);
+				if (World->LineTraceSingleByChannel(H, FVector(Pt.X, Pt.Y, S.bHasZ ? S.Pos.Z : 3000.f), FVector(Pt.X, Pt.Y, -500.f), ECC_Visibility, P))
+				{
+					FString Why; bool bInt = false;
+					const FString Sf = FC->ProbeSurface(H.ImpactPoint, Why, bInt);
+					Note(FString::Printf(TEXT("surface_probe '%s' (%.0f,%.0f) ground z=%.0f actor=%s -> %s%s [%s]"), *S.Name, Pt.X, Pt.Y, H.ImpactPoint.Z, *GetNameSafe(H.GetActor()), *Sf, bInt ? TEXT(" (interior)") : TEXT(""), *Why));
+				}
+				else
+				{
+					Note(FString::Printf(TEXT("surface_probe '%s' (%.0f,%.0f): no ground"), *S.Name, Pt.X, Pt.Y));
+				}
+			}
+		}
+	}
+	else if (S.Do == TEXT("walk_into_walker"))
+	{
+		AAmbientWalker* Wk = nullptr;
+		float Best = 1e9f;
+		for (TActorIterator<AAmbientWalker> It(World); It; ++It)
+		{
+			if (!S.Student.IsEmpty() && It->StudentId != S.Student) { continue; }
+			const float D = FVector::Dist2D(It->GetActorLocation(), Pawn->GetActorLocation());
+			if (D < Best) { Best = D; Wk = *It; }
+		}
+		WalkerRef = Wk;
+		WalkerMinDist = 1e9f;
+		if (!Wk)
+		{
+			++Failures;
+			Note(FString::Printf(TEXT("walk_into_walker '%s' FAILED: no walker '%s'"), *S.Name, *S.Student));
+		}
+		else
+		{
+			WalkerYieldsAtStart = Wk->GetYieldCount();
+			if (S.bHeadOn)
+			{
+				// ahead of the walker on its own (path-checked) leg: toward its next waypoint, at most 85 % of the way
+				FVector Fwd = Wk->GetNextWaypoint() - Wk->GetActorLocation(); Fwd.Z = 0.f;
+				const float Leg = Fwd.Size();
+				const FVector From = Wk->GetActorLocation() + Fwd.GetSafeNormal() * FMath::Min(S.SpawnDist, 0.85f * Leg);
+				const FVector Face = Wk->GetActorLocation() - From;
+				Pawn->TeleportTo(From, FRotator(0.f, Face.Rotation().Yaw, 0.f), false, true);
+				Pawn->GetCharacterMovement()->StopMovementImmediately();
+			}
+			Pawn->SetScriptedGait(ParseGait(S.Gait, S.bRun));
+			Note(FString::Printf(TEXT("walk_into_walker '%s' target %s (%s, loop %s) at %s, player %s, %.0f cm apart"), *S.Name, *Wk->GetName(), *Wk->StudentId, *Wk->LoopId,
+				*Wk->GetActorLocation().ToString(), *Pawn->GetActorLocation().ToString(), FVector::Dist2D(Wk->GetActorLocation(), Pawn->GetActorLocation())));
+		}
+	}
 	else if (S.Do == TEXT("action_shot"))
 	{
 		ActionPhase = 0;
@@ -310,6 +418,27 @@ bool UBullyWalkRunner::TickStep(UWorld* World, ABullyCharacter* Pawn, FBullyWalk
 			PC->SetControlRotation(FRotator(-12.f, Dir.Rotation().Yaw, 0.f));
 		}
 		Pawn->AddMovementInput(Dir, 1.f);
+		return false;
+	}
+	if (S.Do == TEXT("walk_into_walker"))
+	{
+		AAmbientWalker* Wk = WalkerRef.Get();
+		if (!Wk) { return true; }
+		FVector To = Wk->GetActorLocation() - Pawn->GetActorLocation();
+		To.Z = 0.f;
+		WalkerMinDist = FMath::Min(WalkerMinDist, To.Size());
+		if (PC && S.Cam != TEXT("follow")) { PC->SetControlRotation(FRotator(-12.f, To.Rotation().Yaw, 0.f)); }
+		Pawn->AddMovementInput(To.GetSafeNormal(), 1.f);
+		if (T >= S.Seconds)
+		{
+			const float R2 = Pawn->GetCapsuleComponent()->GetScaledCapsuleRadius() + Wk->GetCapsuleComponent()->GetScaledCapsuleRadius();
+			const bool bPenetrated = WalkerMinDist < 0.85f * R2;
+			if (bPenetrated) { ++Failures; }
+			Note(FString::Printf(TEXT("walk_into_walker '%s' RESULT %s: closest centre distance %.1f cm (capsules touch at %.0f), walker yields +%d, final distance %.0f cm"),
+				*S.Name, bPenetrated ? TEXT("PENETRATED") : TEXT("blocked"), WalkerMinDist, R2, Wk->GetYieldCount() - WalkerYieldsAtStart, To.Size()));
+			Pawn->SetRunning(false);
+			return true;
+		}
 		return false;
 	}
 	if (S.Do == TEXT("action_shot"))

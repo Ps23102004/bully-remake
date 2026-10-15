@@ -25,8 +25,9 @@
     "LOBBY02"
    ],
    "texture_regex": "SC28_tile_01",
-   "roughness": 0.22,
-   "specular": 0.6
+   "roughness": 0.45,
+   "specular": 0.35,
+   "_note": "polish1: roughness 0.22 -> 0.45, specular 0.6 -> 0.35 to tone down the sharp window glints Lumen mirrored on the lobby floor (GLITCHES.md 5); ESTIMATE, confirm by eye."
   },
   "lights": [
    {
@@ -77,7 +78,14 @@
     "temperature_k": 4400,
     "radius_cm": 5000
    }
-  ]
+  ],
+  "backdrop_glow": {
+   "models": [
+    "DL_iSchoolEnt4"
+   ],
+   "gain": 5000,
+   "_note": "polish1: exterior backdrop seen through the entrance doorway (SC_*Screen cards, 75 m wide, parked outside the lobby pocket). Self-lit so it reads like the sunlit courtyard instead of dim grey. ESTIMATED from the foliage (1500) and window (14000) gains; confirm by eye."
+  }
  },
  "variants": {
   "A_classic_gold": {

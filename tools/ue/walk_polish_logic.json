@@ -1,0 +1,145 @@
+{
+ "_owner": "polish1",
+ "_note": "Renderer-free logic verification (run with tools/ue/run_walk_nullrhi.sh; no shot steps). 1) player vs walkers: walk head-on into three walkers on three loops, expect 'blocked' (never PENETRATED) and walker yields; 2) both door directions with the frame-by-frame fade trace (-BRDoorTrace). Footstep surface picks (S1-S3 cross grass / cobble / dirt path / sidewalk at three gaits; the lobby after the door is lino) are logged by the footstep component itself: 'BR_AUDIO surface ...' on every surface change, 'BR_AUDIO step ... surface= role= gait= cue=' on every foot plant.",
+ "warmup_seconds": 5,
+ "settle_seconds": 1,
+ "max_compile_wait_seconds": 1800,
+ "exec": [],
+ "steps": [
+  {
+   "do": "log",
+   "name": "spawn"
+  },
+  {
+   "do": "wait",
+   "seconds": 4
+  },
+  {
+   "do": "walk_into_walker",
+   "name": "W1_greekboy_central_walk_run",
+   "student": "greekboy",
+   "head_on": true,
+   "spawn_dist": 600,
+   "gait": "run",
+   "timeout": 9
+  },
+  {
+   "do": "walk_into_walker",
+   "name": "W2_asiangirl_gate_approach_run",
+   "student": "asiangirl",
+   "head_on": true,
+   "spawn_dist": 600,
+   "gait": "run",
+   "timeout": 9
+  },
+  {
+   "do": "walk_into_walker",
+   "name": "W3_prefect_crossing_walk",
+   "student": "prefect_seth",
+   "head_on": true,
+   "spawn_dist": 600,
+   "gait": "walk",
+   "timeout": 10
+  },
+  {
+   "do": "teleport",
+   "name": "to_street_start",
+   "x": 32200,
+   "y": 7300,
+   "z": 800,
+   "yaw": 180
+  },
+  {
+   "do": "wait",
+   "seconds": 1
+  },
+  {
+   "do": "walk_to",
+   "name": "S1_street_to_gate_arch_walk",
+   "x": 30300,
+   "y": 7300,
+   "gait": "walk",
+   "timeout": 20,
+   "radius": 60,
+   "stop_on_door": false
+  },
+  {
+   "do": "walk_to",
+   "name": "S2_gate_to_central_path_sprint",
+   "x": 28600,
+   "y": 7150,
+   "gait": "sprint",
+   "timeout": 20,
+   "radius": 80,
+   "stop_on_door": false
+  },
+  {
+   "do": "walk_to",
+   "name": "S3_central_path_to_sidewalk_run",
+   "x": 24500,
+   "y": 7150,
+   "gait": "run",
+   "timeout": 25,
+   "radius": 80,
+   "stop_on_door": false
+  },
+  {
+   "do": "teleport",
+   "name": "to_main_door_forecourt",
+   "x": 22300,
+   "y": 7330,
+   "yaw": 180,
+   "z": 1100
+  },
+  {
+   "do": "walk_to",
+   "name": "D1_into_main_door",
+   "x": 21070,
+   "y": 7330,
+   "gait": "walk",
+   "timeout": 30,
+   "radius": 20,
+   "stop_on_door": true
+  },
+  {
+   "do": "wait_door",
+   "timeout": 6
+  },
+  {
+   "do": "wait",
+   "seconds": 1.5
+  },
+  {
+   "do": "walk_to",
+   "name": "D1b_across_lobby",
+   "x": -62860,
+   "y": 31400,
+   "gait": "walk",
+   "timeout": 20,
+   "radius": 60,
+   "stop_on_door": false
+  },
+  {
+   "do": "walk_to",
+   "name": "D2_back_to_exit_door",
+   "x": -62860,
+   "y": 32950,
+   "gait": "walk",
+   "timeout": 30,
+   "radius": 20,
+   "stop_on_door": true
+  },
+  {
+   "do": "wait_door",
+   "timeout": 6
+  },
+  {
+   "do": "wait",
+   "seconds": 1.5
+  },
+  {
+   "do": "log",
+   "name": "end"
+  }
+ ]
+}

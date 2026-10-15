@@ -115,7 +115,15 @@ def cmd_ped(a) -> int:
             names = []
         try:
             reqs = clip_requests(install, img, a.group, names) if names else []
-            r = export_ped(e.stem, img.read_entry(e), txd, store, a.out, reqs, root_motion=a.root_motion)
+            head = None
+            if a.head:
+                he = img.find(a.head + ".nif")
+                if he is None:
+                    print(f"{a.head}: not in World.img", file=sys.stderr)
+                    return 1
+                hide = defs.get(he.stem)
+                head = (he.stem, img.read_entry(he), a.head_txd or (hide.txd if hide else he.stem))   # clothing rows: model == txd name
+            r = export_ped(e.stem, img.read_entry(e), txd, store, a.out, reqs, root_motion=a.root_motion, head=head)
         except FormatError as ex:
             print(f"{a.name}: FAILED {ex}", file=sys.stderr)
             return 1
@@ -157,6 +165,34 @@ def cmd_audio(a) -> int:
             for e in b.entries:
                 print(f"{e.index:4d} {e.name:40s} {e.seconds:7.3f}s {e.sample_rate:6d} Hz {e.channels}ch "
                       f"{'adpcm' if e.tag == 2 else e.tag}")
+        return 0
+    if a.action == "cues":
+        res = {}
+        for p in audio.sea_files(install):
+            if a.banks and p.stem.lower() not in {b.lower() for b in a.banks}:
+                continue
+            b = audio.parse_sea(p)
+            res[p.stem] = {"wave_bank": b.bank_name, "cues": audio.cue_table(b)}
+        dest = os.path.join(a.out, "audio", "cues")
+        os.makedirs(dest, exist_ok=True)
+        for stem, r in res.items():
+            with open(os.path.join(dest, stem + ".json"), "w") as f:
+                json.dump({"format": "bully-remake.sdbk-cues/1", "bank": stem, **r}, f, indent=1)
+            print(f"# {stem}: {len(r['cues'])} cues -> {dest}/{stem}.json")
+            if a.print_cues:
+                for n, c in r["cues"].items():
+                    print(f"{n:28s} -> {c['wave']:36s} pitch {c['pitch_cents']:+5d} [{c['pitch_min']:+d}..{c['pitch_max']:+d}] {c['volume_db']:+.1f} dB")
+        return 0
+    if a.action == "footsteps":
+        cfg = json.load(open(a.config))
+        res = audio.resolve_footsteps(install, cfg, log=lambda m: print(m, file=sys.stderr))
+        dest = os.path.join(a.out, "audio", "footstep_cues.json")
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "w") as f:
+            json.dump(res, f, indent=1)
+        n = sum(len(g) for c in res["contexts"].values() for sf in c.values() for r in sf.values() for g in r.values())
+        print(json.dumps({"out": dest, "cue_lists": n, "banks": {b: len(w) for b, w in res["waves"].items()},
+                          "unresolved": len(res["unresolved"])}))
         return 0
     out = os.path.join(a.out, "audio")
     man = audio.extract(install, out, a.banks or None, a.names, log=lambda m: print(m, file=sys.stderr))
@@ -292,6 +328,9 @@ def main(argv=None) -> int:
                                                "default: Jimmy's locomotion set")
     p.add_argument("--no-anims", action="store_true", help="skeleton and skin only")
     p.add_argument("--root-motion", default="inplace", choices=["inplace", "raw", "dummy"])
+    p.add_argument("--head", help="clothing head/hair model (e.g. B_Buzz = Jimmy's default hair) that replaces the base head: "
+                                  "its shape is skinned onto the ped's skeleton by joint name, the base head triangles are cut out")
+    p.add_argument("--head-txd", help="texture dictionary of --head (default: its IDE row)")
     p.add_argument("--txd", help="override the texture dictionary (default: from the IDE)")
     p.add_argument("--no-textures", action="store_true")
     p.add_argument("--sheet", help="also render a CPU contact sheet PNG (bind pose + frames per clip)")
@@ -304,10 +343,13 @@ def main(argv=None) -> int:
     p.add_argument("--hxd", default="MAINPED")
     p.set_defaults(fn=cmd_anim)
 
-    p = sub.add_parser("audio", help="audio/xact/*.SEA sound banks: survey, list, or decode to WAV (imported/audio/)")
-    p.add_argument("action", choices=["survey", "list", "extract"])
+    p = sub.add_parser("audio", help="audio/xact/*.SEA sound banks: survey, list, cues (SDBK cue graph), footsteps (surface table), or decode to WAV (imported/audio/)")
+    p.add_argument("action", choices=["survey", "list", "extract", "cues", "footsteps"])
     p.add_argument("banks", nargs="*", help="bank stems, e.g. FeetAll Birds Wind, or streamed Ambs/Cuts/Music/Speech (default: all .SEA)")
     p.add_argument("--names", help="regex on wave names (extract only)")
+    p.add_argument("--print-cues", action="store_true", help="cues: also print every cue -> wave row")
+    p.add_argument("--config", default="unreal/BullyRemake/Config/FootstepSurfaces.json",
+                   help="footsteps: hand-authored surface -> cue-family rules")
     p.set_defaults(fn=cmd_audio)
 
     p = sub.add_parser("nft", help="decode .nft texture dictionaries to PNG")

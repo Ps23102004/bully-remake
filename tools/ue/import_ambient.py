@@ -39,6 +39,11 @@ def err(msg):
     unreal.log_error("BR_AMBIENT_IMPORT ERROR " + msg)
 
 
+def warn(msg):
+    REPORT["warnings"].append(msg)
+    unreal.log_warning("BR_AMBIENT_IMPORT WARN " + msg)
+
+
 def asset_name(s):
     return re.sub(r"[^A-Za-z0-9_]+", "_", s).strip("_") or "unnamed"
 
@@ -68,12 +73,25 @@ def import_students(cfg, imported, report_dir):
             err("student %s: no report (%s)" % (model, e))
 
 
-def wanted_sounds(cfg):
+def load_footstep_table(imported):
+    """imported/audio/footstep_cues.json (python3 -m tools.importers audio footsteps): surface/role/gait -> cue lists."""
+    p = os.path.join(imported, "audio", "footstep_cues.json")
+    if not os.path.isfile(p):
+        warn("no %s (run python3 -m tools.importers audio footsteps): per-surface footsteps skipped" % p)
+        return None
+    with open(p) as f:
+        return json.load(f)
+
+
+def wanted_sounds(cfg, table=None):
     out = []
     for lst in cfg["footsteps"].values():
         out += [(x, False) for x in lst]
     for x in cfg["ambient"]["sounds"]:
         out.append((x, True))
+    if table:
+        for bank, waves in table["waves"].items():
+            out += [({"bank": bank, "name": w}, False) for w in waves]
     seen, res = set(), []
     for x, loop in out:
         k = (x["bank"], x["name"])
@@ -89,7 +107,8 @@ def import_audio(cfg, imported):
         man = json.load(f)
     by_key = {(r["bank"], r["name"]): r for r in man["entries"]}
     ok = 0
-    for x, loop in wanted_sounds(cfg):
+    table = load_footstep_table(imported)
+    for x, loop in wanted_sounds(cfg, table):
         row = by_key.get((x["bank"], x["name"]))
         if row is None:
             err("audio %s/%s not in %s (run python3 -m tools.importers audio extract %s)" % (x["bank"], x["name"], man_path, x["bank"]))
@@ -117,6 +136,27 @@ def import_audio(cfg, imported):
         ok += 1
         log("audio %s duration %.3f s looping=%s" % (path, dur, loop))
     log("audio imported: %d" % ok)
+    if table:
+        write_footstep_table(table)
+
+
+def write_footstep_table(table):
+    """Content/Imported/Audio/footstep_cues.json: the resolved table plus each cue's SoundWave asset path (read at runtime
+    by UBullyFootstepComponent next to Config/FootstepSurfaces.json). Git-ignored like all imported content."""
+    n = 0
+    for ctx in table["contexts"].values():
+        for roles in ctx.values():
+            for gaits in roles.values():
+                for cues in gaits.values():
+                    for c in cues:
+                        c["asset"] = "/Game/Imported/Audio/%s/%s" % (c["bank"], asset_name(c["wave"]))
+                        n += 1
+    dest = os.path.join(unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_content_dir()), "Imported", "Audio", "footstep_cues.json")
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    with open(dest, "w") as f:
+        json.dump(table, f)
+    REPORT["audio"]["footstep_cues"] = {"file": dest, "cues": n, "unresolved": len(table.get("unresolved", []))}
+    log("footstep table: %d cue entries -> %s" % (n, dest))
 
 
 def main():
