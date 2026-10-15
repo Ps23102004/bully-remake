@@ -539,6 +539,19 @@ def bind_slots(name, sm, mats, base_dir, imported, stats):
     return changed
 
 
+def ensure_complex_collision(sm):
+    """Phase 0 collision: the render triangles ARE the collision (complex-as-simple, so pawn capsules, camera
+    probes and ground traces all use them). The game's own Coll/ data is not parsed yet. True if changed."""
+    body = sm.get_editor_property("body_setup")
+    if not body:
+        return False
+    want = unreal.CollisionTraceFlag.CTF_USE_COMPLEX_AS_SIMPLE
+    if body.get_editor_property("collision_trace_flag") == want:
+        return False
+    body.set_editor_property("collision_trace_flag", want)
+    return True
+
+
 def import_meshes(imported, gltf_paths, gltfs, stage_dir):
     stats = {"total": len(gltfs), "imported": 0, "skipped_same": 0, "failed": 0, "slots_bound": 0,
              "slots_unbound": 0, "seconds": 0.0}
@@ -560,7 +573,11 @@ def import_meshes(imported, gltf_paths, gltfs, stage_dir):
             meshes[name] = sm
             stats["skipped_same"] += 1
             try:
-                if bind_slots(name, sm, mats, base_dir, imported, stats):
+                rebound = bind_slots(name, sm, mats, base_dir, imported, stats)
+                if ensure_complex_collision(sm):
+                    stats["collision_fixed"] = stats.get("collision_fixed", 0) + 1
+                    rebound = True
+                if rebound:
                     EAL.save_loaded_asset(sm, only_if_is_dirty=False)
                     stats["rebound_saved"] = stats.get("rebound_saved", 0) + 1
             except Exception as e:
@@ -592,9 +609,7 @@ def import_meshes(imported, gltf_paths, gltfs, stage_dir):
                 err("mesh import failed: %s (objects: %s)" % (name, [o.get_path_name() for o in (task.get_objects() or [])]))
                 continue
             bind_slots(name, sm, mats, base_dir, imported, stats)
-            body = sm.get_editor_property("body_setup")
-            if body:
-                body.set_editor_property("collision_trace_flag", unreal.CollisionTraceFlag.CTF_USE_COMPLEX_AS_SIMPLE)
+            ensure_complex_collision(sm)
             EAL.set_metadata_tag(sm, TAG, sig)
             EAL.save_loaded_asset(sm, only_if_is_dirty=False)
             meshes[name] = sm

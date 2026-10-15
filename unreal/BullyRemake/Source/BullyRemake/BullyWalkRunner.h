@@ -72,6 +72,7 @@ private:
 	int32 ShotIndex = 0;
 	int32 HighResX = 0, HighResY = 0;
 	int32 DoorCountAtStart = 0;
+	int32 DoorsAcknowledged = 0;      // door uses already consumed by a wait_door step
 	float BestDist = 1e9f;
 	double LastProgressAt = 0.0;
 	FString OutDir;

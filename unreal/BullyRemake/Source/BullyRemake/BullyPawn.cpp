@@ -49,6 +49,7 @@ ABullyPawn::ABullyPawn()
 	CameraBoom->SetupAttachment(RootComponent);
 	CameraBoom->TargetArmLength = CameraDistance;
 	CameraBoom->TargetOffset = FVector(0.f, 0.f, EyeHeight - 90.f);   // pivot at eye height (capsule centre is 90 cm up)
+	CameraBoom->SocketOffset = FVector(0.f, 55.f, 10.f);   // over-the-shoulder: keeps the body out of the screen centre
 	CameraBoom->bUsePawnControlRotation = true;
 	CameraBoom->bDoCollisionTest = true;
 	CameraBoom->ProbeSize = 12.f;

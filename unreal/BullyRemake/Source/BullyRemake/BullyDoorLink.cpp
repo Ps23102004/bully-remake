@@ -18,7 +18,11 @@ ABullyDoorLink::ABullyDoorLink()
 	Trigger = CreateDefaultSubobject<UBoxComponent>(TEXT("Trigger"));
 	SetRootComponent(Trigger);
 	Trigger->SetBoxExtent(FVector(40.f, 100.f, 150.f));
-	Trigger->SetCollisionProfileName(TEXT("OverlapOnlyPawn"));
+	// Overlap the pawn only; ignore everything else so floor/camera traces never hit the trigger.
+	Trigger->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	Trigger->SetCollisionObjectType(ECC_WorldDynamic);
+	Trigger->SetCollisionResponseToAllChannels(ECR_Ignore);
+	Trigger->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 	Trigger->SetGenerateOverlapEvents(true);
 	Trigger->SetHiddenInGame(true);
 }

@@ -179,8 +179,9 @@ bool UBullyWalkRunner::TickStep(UWorld* World, ABullyPawn* Pawn, FBullyWalkStep&
 	}
 	if (S.Do == TEXT("wait_door"))
 	{
-		if (Pawn->DoorUseCount > DoorCountAtStart && !Pawn->bDoorBusy)
+		if (Pawn->DoorUseCount > DoorsAcknowledged && !Pawn->bDoorBusy)
 		{
+			DoorsAcknowledged = Pawn->DoorUseCount;
 			Note(FString::Printf(TEXT("wait_door OK: now at %s (doors used %d)"), *Pawn->GetActorLocation().ToString(), Pawn->DoorUseCount));
 			return true;
 		}

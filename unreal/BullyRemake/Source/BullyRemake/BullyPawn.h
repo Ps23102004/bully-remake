@@ -34,7 +34,7 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Bully|Tuning") float RunSpeed = 450.f;
 	UPROPERTY(EditAnywhere, Category = "Bully|Tuning") float JumpSpeed = 420.f;
 	UPROPERTY(EditAnywhere, Category = "Bully|Tuning") float EyeHeight = 160.f;
-	UPROPERTY(EditAnywhere, Category = "Bully|Tuning") float CameraDistance = 260.f;
+	UPROPERTY(EditAnywhere, Category = "Bully|Tuning") float CameraDistance = 300.f;
 	UPROPERTY(EditAnywhere, Category = "Bully|Tuning") float LookSensitivity = 1.0f;
 	UPROPERTY(EditAnywhere, Category = "Bully|Tuning") bool bSnapToGroundOnBeginPlay = true;
 
