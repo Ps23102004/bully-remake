@@ -1,0 +1,80 @@
+{
+ "_owner": "builder-B5 (shot)",
+ "_note": "THE SHOT vantages (Phase 0 milestone 5): four fixed named cameras, identical for every lighting variant and every critique round. UE cm (x, -y of game metres). Front gates = tschool MGates at game (302.9, -72.7), facade faces +X; the front-gate and courtyard cameras look WEST (-X) along the entrance axis; the path camera stands on the courtyard path between the gate and the main building looking at the tree group east of the building; the lobby camera stands inside the ischool lobby (far pocket). Rendered by run_candidates.sh (lighting variant applied first) through UBullyShotRunner.",
+ "warmup_seconds": 20,
+ "settle_seconds": 12,
+ "max_compile_wait_seconds": 1500,
+ "quit_after_seconds": 3,
+ "highres_size": [
+  3840,
+  2160
+ ],
+ "exec": [
+  "r.SetRes 3840x2160w",
+  "r.HighResScreenshotDelay 8",
+  "r.MotionBlurQuality 0",
+  "t.MaxFPS 30"
+ ],
+ "shots": [
+  {
+   "name": "front_gates",
+   "location_cm": [
+    32600,
+    7300,
+    625
+   ],
+   "look_at_cm": [
+    18600,
+    7300,
+    3400
+   ],
+   "fov": 64
+  },
+  {
+   "name": "facade_courtyard",
+   "location_cm": [
+    28800,
+    7300,
+    900
+   ],
+   "look_at_cm": [
+    19500,
+    7330,
+    2900
+   ],
+   "fov": 68,
+   "ground_trace": false
+  },
+  {
+   "name": "path_trees",
+   "location_cm": [
+    29000,
+    7000,
+    820
+   ],
+   "look_at_cm": [
+    23000,
+    8300,
+    2400
+   ],
+   "fov": 66,
+   "ground_trace": false
+  },
+  {
+   "name": "lobby_interior",
+   "location_cm": [
+    -62860,
+    32380,
+    170
+   ],
+   "look_at_cm": [
+    -62860,
+    30000,
+    430
+   ],
+   "fov": 72,
+   "ground_trace": false
+  }
+ ],
+ "_round2": "Round 2 reframe per CRITIQUE_R1: gates pulled back 10 m, eye 2.5 m, ~level, FOV 62; facade back 23 m / up; path panned left + tilted up; lobby FOV 72 from the far wall."
+}

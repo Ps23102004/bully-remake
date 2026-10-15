@@ -1,0 +1,78 @@
+{
+ "_owner": "builder-B4 (ambient)",
+ "_note": "M4 wide stills: the camera is a fixed free camera set by -BRAmbientCam=fixed:... (UAmbientSubsystem evidence camera); six shots 5 s apart.",
+ "warmup_seconds": 15,
+ "settle_seconds": 3,
+ "max_compile_wait_seconds": 1800,
+ "highres_size": [
+  1920,
+  1080
+ ],
+ "exec": [
+  "r.MotionBlurQuality 0",
+  "t.MaxFPS 30",
+  "r.HighResScreenshotDelay 8"
+ ],
+ "steps": [
+  {
+   "do": "log",
+   "name": "start"
+  },
+  {
+   "do": "wait",
+   "seconds": 12
+  },
+  {
+   "do": "shot",
+   "name": "wide_1"
+  },
+  {
+   "do": "wait",
+   "seconds": 5
+  },
+  {
+   "do": "shot",
+   "name": "wide_2"
+  },
+  {
+   "do": "wait",
+   "seconds": 5
+  },
+  {
+   "do": "shot",
+   "name": "wide_3"
+  },
+  {
+   "do": "wait",
+   "seconds": 5
+  },
+  {
+   "do": "shot",
+   "name": "wide_4"
+  },
+  {
+   "do": "wait",
+   "seconds": 5
+  },
+  {
+   "do": "shot",
+   "name": "wide_5"
+  },
+  {
+   "do": "wait",
+   "seconds": 5
+  },
+  {
+   "do": "shot",
+   "name": "wide_6"
+  },
+  {
+   "do": "wait",
+   "seconds": 5
+  },
+  {
+   "do": "log",
+   "name": "end"
+  }
+ ]
+}

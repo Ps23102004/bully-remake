@@ -1,0 +1,297 @@
+{
+ "_owner": "builder-B5 (shot)",
+ "_note": "Lighting variants for the golden-hour shot (Phase 0 milestone 5). Read by tools/ue/lighting.py. Sun: elevation above the horizon, azimuth = world yaw of the direction TOWARD the sun (UE yaw: 0 = +X, 90 = +Y). The main building facade and the front gates face +X, so azimuth near 0 front-lights them and azimuth near 60-90 rakes across them. intensity_lux is the atmosphere sun light (UE multiplies it by the atmosphere transmittance). Exposure is LOCKED: auto exposure min = max = exposure_ev100 (project uses ExtendDefaultLuminanceRange, so those are EV100), identical for every frame of a variant; critique rounds are comparable. Interiors are exposure-neutral by construction: they sit on lighting channel 1, the sun and sky-leak are kept off them, and a private interior key light (lighting channel 1 only) brings them to the same EV as the exterior, so no per-pocket exposure volume (which would pop at door transitions) is needed. ROUND 2 (critic CRITIQUE_R1): B_raking_amber is the winner and the only variant tuned; A and C keep their round-1 definitions (they pick up the global interior block but are not rendered). New optional per-variant blocks: sky.lower_hemisphere_rgb (warm bounce), clouds (volumetric cloud MI params), foliage_glow (emissive = albedo*gain on leaf cards, backlit-leaf transmission), post.extra. Global: interior.lights (channel-1 rect/point lights), interior.window_glow, interior.floor, shot_hides (importer-artifact actors hidden for the hero shots).",
+ "default_variant": "B_raking_amber",
+ "interior": {
+  "scene_prefixes": [
+   "isc_",
+   "ischool"
+  ],
+  "key_lux": 14000,
+  "key_pitch_deg": -62,
+  "key_yaw_deg": 215,
+  "key_temperature_k": 4300,
+  "key_source_angle_deg": 5.0,
+  "key_cast_shadows": false,
+  "hide_night_regex": "win.*night",
+  "window_glow": {
+   "texture_regex": "window_0\\d_d$",
+   "gain": 14000
+  },
+  "floor": {
+   "models": [
+    "LM_lobbyflr",
+    "LOBBY01",
+    "LOBBY02"
+   ],
+   "texture_regex": "SC28_tile_01",
+   "roughness": 0.22,
+   "specular": 0.6
+  },
+  "lights": [
+   {
+    "name": "back_windows",
+    "type": "rect",
+    "loc_cm": [
+     -62864,
+     29700,
+     800
+    ],
+    "yaw": 90,
+    "pitch": -15,
+    "lumens": 3000000,
+    "width_cm": 1200,
+    "height_cm": 500,
+    "temperature_k": 4400,
+    "radius_cm": 6000
+   },
+   {
+    "name": "left_side",
+    "type": "rect",
+    "loc_cm": [
+     -63800,
+     30800,
+     800
+    ],
+    "yaw": 0,
+    "pitch": -30,
+    "lumens": 2000000,
+    "width_cm": 800,
+    "height_cm": 500,
+    "temperature_k": 4400,
+    "radius_cm": 5000
+   },
+   {
+    "name": "right_side",
+    "type": "rect",
+    "loc_cm": [
+     -61900,
+     30800,
+     800
+    ],
+    "yaw": 180,
+    "pitch": -30,
+    "lumens": 2000000,
+    "width_cm": 800,
+    "height_cm": 500,
+    "temperature_k": 4400,
+    "radius_cm": 5000
+   }
+  ]
+ },
+ "variants": {
+  "A_classic_gold": {
+   "description": "Low warm sun in front of the facade (az 28, el 12): front-lit gates and facade, long shadows falling back toward the building, light haze.",
+   "sun": {
+    "elevation_deg": 12.0,
+    "azimuth_deg": 28.0,
+    "intensity_lux": 110000,
+    "temperature_k": 5400,
+    "source_angle_deg": 0.6
+   },
+   "sky": {
+    "intensity": 1.5
+   },
+   "atmosphere": {
+    "ground_albedo_rgb": [
+     0.3,
+     0.28,
+     0.25
+    ],
+    "aerial_perspective_distance_scale": 1.6
+   },
+   "fog": {
+    "density": 0.012,
+    "height_falloff": 0.12,
+    "inscatter_rgb": [
+     0.95,
+     0.72,
+     0.52
+    ],
+    "start_distance_cm": 2000,
+    "max_opacity": 0.85,
+    "volumetric": true,
+    "directional_inscatter_exponent": 6.0,
+    "directional_inscatter_rgb": [
+     1.0,
+     0.62,
+     0.3
+    ]
+   },
+   "exposure_ev100": 11.8,
+   "white_balance": {
+    "temp_k": 6200,
+    "tint": 0.0
+   },
+   "post": {
+    "bloom_intensity": 0.35,
+    "saturation": 1.05,
+    "contrast": 1.0
+   }
+  },
+  "B_raking_amber": {
+   "description": "Lower, side-on amber sun (az 62, el 9): strongly raking light across the facade, very long shadows, deeper orange, cooler blue shade.",
+   "sun": {
+    "elevation_deg": 9.0,
+    "azimuth_deg": 62.0,
+    "intensity_lux": 120000,
+    "temperature_k": 4300,
+    "source_angle_deg": 0.5
+   },
+   "sky": {
+    "intensity": 5.0,
+    "lower_hemisphere_rgb": [
+     0.4,
+     0.28,
+     0.17
+    ]
+   },
+   "atmosphere": {
+    "ground_albedo_rgb": [
+     0.28,
+     0.25,
+     0.22
+    ],
+    "aerial_perspective_distance_scale": 1.8
+   },
+   "fog": {
+    "density": 0.013,
+    "height_falloff": 0.1,
+    "inscatter_rgb": [
+     1.0,
+     0.6,
+     0.38
+    ],
+    "start_distance_cm": 1500,
+    "max_opacity": 0.6,
+    "volumetric": true,
+    "directional_inscatter_exponent": 8.0,
+    "directional_inscatter_rgb": [
+     1.0,
+     0.52,
+     0.22
+    ]
+   },
+   "exposure_ev100": 11.6,
+   "white_balance": {
+    "temp_k": 6000,
+    "tint": 0.0
+   },
+   "post": {
+    "bloom_intensity": 0.45,
+    "saturation": 1.1,
+    "contrast": 1.05
+   },
+   "clouds": {
+    "scalars": {
+     "Cloud_GlobalCoverage": 0.15,
+     "Cloud_GlobalDensity": 0.2,
+     "Layout_CloudGlobalScale": 256.0
+    },
+    "vectors": {
+     "Cloud_AlbedoColor": [
+      1.0,
+      0.9,
+      0.85,
+      1.0
+     ]
+    },
+    "layer_bottom_altitude": 1.6,
+    "layer_height": 3.0,
+    "tracing_start_max_distance": 350.0,
+    "tracing_max_distance": 50.0,
+    "view_sample_count_scale": 1.0,
+    "sky_light_cloud_bottom_occlusion": 0.0
+   },
+   "foliage_glow": {
+    "gain": 1500
+   },
+   "birds": {
+    "count": 0,
+    "center_cm": [
+     14039,
+     5774,
+     8385
+    ],
+    "spread_cm": [
+     1500,
+     1200,
+     450
+    ],
+    "wing_cm": 260,
+    "seed": 7,
+    "heading_yaw_deg": 200,
+    "_note": "DISABLED in round 2: lit flat-cube 'V' silhouettes read as brown debris dashes, not crows (needs a proper bird mesh/billboard); code kept in lighting.build_birds."
+   }
+  },
+  "C_rose_haze": {
+   "description": "Higher, softer sun (az 12, el 15) through thin pale-rose haze; lower contrast, cooler sky and shade, gentle atmosphere.",
+   "sun": {
+    "elevation_deg": 15.0,
+    "azimuth_deg": 12.0,
+    "intensity_lux": 90000,
+    "temperature_k": 5200,
+    "source_angle_deg": 1.2
+   },
+   "sky": {
+    "intensity": 1.6
+   },
+   "atmosphere": {
+    "ground_albedo_rgb": [
+     0.34,
+     0.32,
+     0.32
+    ],
+    "aerial_perspective_distance_scale": 2.2
+   },
+   "fog": {
+    "density": 0.008,
+    "height_falloff": 0.1,
+    "inscatter_rgb": [
+     0.8,
+     0.62,
+     0.62
+    ],
+    "start_distance_cm": 800,
+    "max_opacity": 0.55,
+    "volumetric": true,
+    "directional_inscatter_exponent": 4.0,
+    "directional_inscatter_rgb": [
+     1.0,
+     0.7,
+     0.6
+    ]
+   },
+   "exposure_ev100": 12.0,
+   "white_balance": {
+    "temp_k": 6600,
+    "tint": 0.1
+   },
+   "post": {
+    "bloom_intensity": 0.5,
+    "saturation": 0.98,
+    "contrast": 0.95
+   }
+  }
+ },
+ "shot_hides": [
+  {
+   "model": "DL_Grass04",
+   "comment": "front-gates verge grass patch: a 9x10 m flat mesh carrying 1 m tall grass blades that fill the bottom quarter of the gates frame."
+  },
+  {
+   "model": "SC1b_roofbeams",
+   "comment": "importer artifact: interior roof-beam framing of the main building sticking up through the roof; the floating dark rods and the horizontal bar beside/across the clock tower in the facade shot (round-1 must-fix 6)."
+  },
+  {
+   "model": "streetlamp_ORN01",
+   "near_cm": [
+    25156,
+    7871,
+    798,
+    150
+   ],
+   "comment": "the leaning, unlit lamppost in the facade foreground (round-1 must-fix 6); only this one instance."
+  }
+ ]
+}

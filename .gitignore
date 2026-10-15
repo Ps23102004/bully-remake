@@ -1,6 +1,7 @@
 # Imported game content — NEVER committed. Importers write here at build time.
 imported/
 Imported/
+unreal/BullyRemake/Content/Imported/
 
 # Unreal
 Binaries/
