@@ -1,0 +1,23 @@
+{
+  "_owner": "builder-B2 (doors)",
+  "_format": "bully-remake.door-links/1",
+  "_note": "Our own data (no game content). Hand-measured from the importer manifest + CPU previews, UE cm / UE yaw degrees (UE = (100 x_game, -100 y_game, 100 z_game); yaw 0 = +X_ue, 90 = +Y_ue). 'trigger' is the doorway box on THIS side (center + half extents); 'exit' is where a pawn arriving THROUGH THE PARTNER appears on this side (z is a hint: the runtime snaps it to the floor with a short complex trace). Consumed by tools/ue/import_content.py (spawns ABullyDoorLink actors into the level).",
+  "links": [
+    {
+      "id": "main_door_ext",
+      "partner": "main_door_int",
+      "label": "Main building front door (outside, east facade)",
+      "game_m": {"door": [210.4, -73.3], "note": "SC1b_bldg_main tower east face; courtyard faces +x toward the front gates"},
+      "trigger": {"center_cm": [21070, 7330, 1000], "half_extent_cm": [50, 150, 250]},
+      "exit": {"location_cm": [21320, 7330, 950], "yaw": 0}
+    },
+    {
+      "id": "main_door_int",
+      "partner": "main_door_ext",
+      "label": "Entrance hall door (inside, ischool lobby pocket)",
+      "game_m": {"door": [-628.6, -329.0], "note": "ischool LOBBY01 (-628.6,-310.7), vestibule south of the lobby floor edge y=-324.4; lobby interior is +y_game = -Y_ue"},
+      "trigger": {"center_cm": [-62860, 32950, 100], "half_extent_cm": [150, 50, 250]},
+      "exit": {"location_cm": [-62860, 32200, 0], "yaw": -90}
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "_owner": "builder-B2 (doors)",
+  "_note": "Phase 0 milestone-2 scripted run for UBullyWalkRunner: spawn at the front gates, walk (real pawn, real collision) to the main school door, pass through it into the entrance-hall pocket, look around, walk back out. UE cm / degrees. Camera yaw 180 = looking -X_ue (west, toward the main building).",
+  "warmup_seconds": 15,
+  "settle_seconds": 5,
+  "max_compile_wait_seconds": 1800,
+  "highres_size": [1920, 1080],
+  "exec": ["r.MotionBlurQuality 0", "t.MaxFPS 30", "r.HighResScreenshotDelay 8"],
+  "steps": [
+    {"do": "log", "name": "spawn"},
+    {"do": "trace_ground", "x": 21320, "y": 7330},
+    {"do": "trace_ground", "x": 21070, "y": 7330},
+    {"do": "trace_ground", "x": -62860, "y": 32200, "z": 400},
+    {"do": "trace_ground", "x": -62860, "y": 32950, "z": 400},
+    {"do": "face", "yaw": 180, "pitch": -10},
+    {"do": "shot", "name": "a_front_gates_ground"},
+    {"do": "walk_to", "name": "gates_to_courtyard", "x": 21320, "y": 7330, "run": true, "timeout": 70, "radius": 60, "stop_on_door": false},
+    {"do": "face", "yaw": 180, "pitch": -6},
+    {"do": "shot", "name": "b_school_front_door"},
+    {"do": "walk_to", "name": "into_main_door", "x": 21070, "y": 7330, "run": false, "timeout": 20, "radius": 20},
+    {"do": "wait_door", "timeout": 4},
+    {"do": "wait", "seconds": 1.5},
+    {"do": "shot", "name": "c_entrance_hall"},
+    {"do": "walk_to", "name": "across_lobby", "x": -62860, "y": 30800, "run": false, "timeout": 25, "radius": 60, "stop_on_door": false},
+    {"do": "shot", "name": "c2_lobby_center"},
+    {"do": "face", "yaw": 90, "pitch": -8},
+    {"do": "walk_to", "name": "back_to_door", "x": -62860, "y": 32950, "run": true, "timeout": 30, "radius": 20},
+    {"do": "wait_door", "timeout": 4},
+    {"do": "wait", "seconds": 1.5},
+    {"do": "shot", "name": "d_back_outside"},
+    {"do": "log", "name": "end"}
+  ]
+}

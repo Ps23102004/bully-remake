@@ -622,6 +622,38 @@ def spawn(cls, loc, rot=None, label=None, folder=None):
     return a
 
 
+def place_door_links(eas):
+    """Spawn one ABullyDoorLink per entry of tools/ue/door_links.json (C++ class in Source/BullyRemake).
+    Our own data: trigger box + exit point per door side, in UE cm (see the file's _note)."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "door_links.json")
+    if not os.path.exists(path):
+        return 0
+    cls = getattr(unreal, "BullyDoorLink", None)
+    if cls is None:
+        warn("unreal.BullyDoorLink missing (build the editor module first): door links skipped")
+        return 0
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    n = 0
+    for d in data["links"]:
+        c = d["trigger"]["center_cm"]
+        h = d["trigger"]["half_extent_cm"]
+        a = spawn(cls, unreal.Vector(*c), None, "BR_Door_" + d["id"], "Gameplay/Doors")
+        if a is None:
+            warn("door link %s: spawn failed" % d["id"])
+            continue
+        a.set_editor_property("link_id", d["id"])
+        a.set_editor_property("partner_id", d["partner"])
+        a.set_editor_property("label", d.get("label", d["id"]))
+        a.set_editor_property("exit_location", unreal.Vector(*d["exit"]["location_cm"]))
+        a.set_editor_property("exit_yaw", float(d["exit"]["yaw"]))
+        trig = a.get_editor_property("trigger")
+        trig.set_editor_property("box_extent", unreal.Vector(*h))
+        n += 1
+        log("door link %s -> %s at %s" % (d["id"], d["partner"], c))
+    return n
+
+
 def build_level(manifest, placements, scenes):
     stats = {"placed": 0, "skipped_invisible": 0, "skipped_no_gltf": 0, "skipped_no_mesh": 0}
     les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
@@ -693,6 +725,8 @@ def build_level(manifest, placements, scenes):
     ppv.set_editor_property("unbound", True)
     # spawn point in front of the main gates (game ~(322, -73)), facing the main building
     spawn(unreal.PlayerStart, unreal.Vector(32200, 7300, 1200), unreal.Rotator(0, 0, 180), "BR_PlayerStart", "Gameplay")
+
+    stats["door_links"] = place_door_links(eas)
 
     if not les.save_current_level():
         raise RuntimeError("save_current_level failed")
