@@ -1,4 +1,4 @@
-<!-- OWNER: builder-B (ue) -->
+<!-- OWNER: builder-B (ue); M2 sections (pawn, doors, walk runner) by builder-B2 -->
 # tools/ue
 
 Turns the `tools/importers` intermediates (`imported/`, git-ignored) into Unreal assets under
@@ -93,3 +93,42 @@ the viewport.
 
 Known: re-keying instances (e.g. the alpha rule above) leaves the old `MI_*` assets unreferenced in
 `Instances/` (harmless; delete `Content/Imported` for a clean rebuild). `shots_result.json` records the final camera transforms and trace results.
+
+## Milestone 2: walkable campus, pawn, doors (`run_walk.sh`)
+
+The game boots straight into `/Game/Imported/Maps/Bullworth` (`Config/DefaultEngine.ini`: default map,
+`GlobalDefaultGameMode=/Script/BullyRemake.BullyGameMode`, Enhanced Input classes in `DefaultInput.ini`).
+
+**Collision (Phase 0).** Every imported static mesh is complex-as-simple (`ensure_complex_collision`, re-applied
+to already-imported meshes on every run): the render triangles are the collision for pawn capsules, camera
+probes and traces. The manifest's `NOGO_*` / `WALKABLE_*` / `FGRD_ND_*` placements have no model data
+(`gltf: null`, not in `models{}`; they are area/AI markers, `Coll/` only holds `ColAreas.cfg` here), so there is
+nothing to import from them yet; parsing the game's own collision data replaces this later.
+
+**Pawn** (`BullyPawn`, C++, no asset dependencies; input mappings are built in code): third-person capsule +
+engine-primitive body, Enhanced Input WASD + mouse, left stick + right stick, Space / pad A jump, hold Shift /
+L3 run. PLACEHOLDER tuning (real numbers come from the Act.img locomotion notes):
+
+| value | placeholder |
+|---|---|
+| capsule | radius 30 cm, half height 90 cm (1.8 m) |
+| eye / camera pivot | 160 cm, boom 300 cm, over-the-shoulder offset (0, 55, 10), FOV 75 |
+| walk / run | 160 / 450 cm/s (stick magnitude scales analog) |
+| jump | 420 cm/s up (~0.9 m), air control 0.3 |
+| step height / walkable slope | 45 cm / 50 deg |
+| accel / braking / friction | 2048 / 2048 / 8, yaw rate 540 deg/s |
+
+The PlayerStart sits above the front gates (UE 32200, 7300, z 1200); the pawn snaps to the first surface below.
+
+**Doors** (`ABullyDoorLink`, data in `door_links.json`, placed by the `level` step of `import_content.py`).
+Each link = a pawn-only overlap trigger box in the doorway + an exit point (location/yaw) + `LinkId`/`PartnerId`.
+Walking into the trigger fades to black (0.25 s), teleports the pawn to the PARTNER's exit (floor-snapped with a
+short complex trace, camera yaw set), fades in; 1.5 s re-entry cooldown and exits placed clear of their own
+trigger prevent ping-pong. Shipped pair: `main_door_ext` (east facade of the main building tower, game
+(210.4, -73.3)) <-> `main_door_int` (ischool lobby vestibule, game (-628.6, -329.0)). More doors = more JSON
+entries, no code. Interiors stay in their distant pockets (the original game's own layout).
+
+**Scripted run** (`run_walk.sh`, `walk_m2.json`, `UBullyWalkRunner`, active only with `-BRWalkFile=`): drives the
+real pawn with movement input (so collision and the door triggers are exercised for real), steps: `walk_to`,
+`wait_door`, `shot`, `face`, `teleport`, `trace_ground`, `jump`, `log`; writes PNGs and `walk_result.json` with
+STUCK/TIMEOUT reports. Same safety envelope as `run_shots.sh` (GPU slot label `bully-doors`, offscreen, window watch).

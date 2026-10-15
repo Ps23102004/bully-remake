@@ -539,6 +539,19 @@ def bind_slots(name, sm, mats, base_dir, imported, stats):
     return changed
 
 
+def ensure_complex_collision(sm):
+    """Phase 0 collision: the render triangles ARE the collision (complex-as-simple, so pawn capsules, camera
+    probes and ground traces all use them). The game's own Coll/ data is not parsed yet. True if changed."""
+    body = sm.get_editor_property("body_setup")
+    if not body:
+        return False
+    want = unreal.CollisionTraceFlag.CTF_USE_COMPLEX_AS_SIMPLE
+    if body.get_editor_property("collision_trace_flag") == want:
+        return False
+    body.set_editor_property("collision_trace_flag", want)
+    return True
+
+
 def import_meshes(imported, gltf_paths, gltfs, stage_dir):
     stats = {"total": len(gltfs), "imported": 0, "skipped_same": 0, "failed": 0, "slots_bound": 0,
              "slots_unbound": 0, "seconds": 0.0}
@@ -560,7 +573,11 @@ def import_meshes(imported, gltf_paths, gltfs, stage_dir):
             meshes[name] = sm
             stats["skipped_same"] += 1
             try:
-                if bind_slots(name, sm, mats, base_dir, imported, stats):
+                rebound = bind_slots(name, sm, mats, base_dir, imported, stats)
+                if ensure_complex_collision(sm):
+                    stats["collision_fixed"] = stats.get("collision_fixed", 0) + 1
+                    rebound = True
+                if rebound:
                     EAL.save_loaded_asset(sm, only_if_is_dirty=False)
                     stats["rebound_saved"] = stats.get("rebound_saved", 0) + 1
             except Exception as e:
@@ -592,9 +609,7 @@ def import_meshes(imported, gltf_paths, gltfs, stage_dir):
                 err("mesh import failed: %s (objects: %s)" % (name, [o.get_path_name() for o in (task.get_objects() or [])]))
                 continue
             bind_slots(name, sm, mats, base_dir, imported, stats)
-            body = sm.get_editor_property("body_setup")
-            if body:
-                body.set_editor_property("collision_trace_flag", unreal.CollisionTraceFlag.CTF_USE_COMPLEX_AS_SIMPLE)
+            ensure_complex_collision(sm)
             EAL.set_metadata_tag(sm, TAG, sig)
             EAL.save_loaded_asset(sm, only_if_is_dirty=False)
             meshes[name] = sm
@@ -620,6 +635,38 @@ def spawn(cls, loc, rot=None, label=None, folder=None):
     if folder:
         a.set_folder_path(folder)
     return a
+
+
+def place_door_links(eas):
+    """Spawn one ABullyDoorLink per entry of tools/ue/door_links.json (C++ class in Source/BullyRemake).
+    Our own data: trigger box + exit point per door side, in UE cm (see the file's _note)."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "door_links.json")
+    if not os.path.exists(path):
+        return 0
+    cls = getattr(unreal, "BullyDoorLink", None)
+    if cls is None:
+        warn("unreal.BullyDoorLink missing (build the editor module first): door links skipped")
+        return 0
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    n = 0
+    for d in data["links"]:
+        c = d["trigger"]["center_cm"]
+        h = d["trigger"]["half_extent_cm"]
+        a = spawn(cls, unreal.Vector(*c), None, "BR_Door_" + d["id"], "Gameplay/Doors")
+        if a is None:
+            warn("door link %s: spawn failed" % d["id"])
+            continue
+        a.set_editor_property("link_id", d["id"])
+        a.set_editor_property("partner_id", d["partner"])
+        a.set_editor_property("label", d.get("label", d["id"]))
+        a.set_editor_property("exit_location", unreal.Vector(*d["exit"]["location_cm"]))
+        a.set_editor_property("exit_yaw", float(d["exit"]["yaw"]))
+        trig = a.get_editor_property("trigger")
+        trig.set_editor_property("box_extent", unreal.Vector(*h))
+        n += 1
+        log("door link %s -> %s at %s" % (d["id"], d["partner"], c))
+    return n
 
 
 def build_level(manifest, placements, scenes):
@@ -693,6 +740,8 @@ def build_level(manifest, placements, scenes):
     ppv.set_editor_property("unbound", True)
     # spawn point in front of the main gates (game ~(322, -73)), facing the main building
     spawn(unreal.PlayerStart, unreal.Vector(32200, 7300, 1200), unreal.Rotator(0, 0, 180), "BR_PlayerStart", "Gameplay")
+
+    stats["door_links"] = place_door_links(eas)
 
     if not les.save_current_level():
         raise RuntimeError("save_current_level failed")
