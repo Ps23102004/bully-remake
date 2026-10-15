@@ -360,3 +360,11 @@ OPEN-15. `.cat` "compressed" wording (`bully-re:docs/cat.md`): does `FUN_005fb3f
 - `Bully-SE-scripts`: `README.md` (Lua decompilation; Lua 5.0 compile target). The scripts were not needed for the formats.
 
 Reference repos are licensed by their authors. This brief describes the formats in its own words and quotes only small struct layouts with citations.
+
+## Corrections and resolved OPENs (2026-10-15, after importer build)
+
+- **Placement counts:** tschool.ipb has **215** placements and ischool.ipb **236** (each .ipb has a second placement section the first survey pass missed). The 210/234 figures above are superseded.
+- **OPEN-9 resolved:** the seven loose `.txd` files decode through the same NIF/NiPixelData path as `.nft`.
+- **OPEN-8 explained:** `BBonusB`, `Barr01_Switch`, `BeerKeg`, `BirdBath` were corrupted upstream by a LF→CRLF line-ending conversion (headers end CRLF, no bare LF bytes anywhere; some original CRLFs ambiguous). Not exactly reversible; the importer skips them with a warning.
+- **New inference:** the unknown float at +68 in each placement record behaves like an **area code** (0 outdoors, 2 ischool, 15 isc_clas). Inferred only — confirm in Ghidra.
+- Still on Gamebryo-doc trust rather than verification: normal-map green-channel direction; texture wrap bit layout (school slots all read `0x3200`).
