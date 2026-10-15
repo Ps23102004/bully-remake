@@ -166,6 +166,12 @@ def cmd_validate(a) -> int:
     return 1 if bad else 0
 
 
+def cmd_preview(a) -> int:
+    from .preview import render
+    render(a.out, a.scenes, view=a.view, size=a.size, cut=a.cut, out_path=a.png)
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python3 -m tools.importers", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -203,6 +209,14 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("validate", help="structurally validate every glTF under --out/models")
     p.set_defaults(fn=cmd_validate)
+
+    p = sub.add_parser("preview", help="CPU software render of imported scenes to PNG (evidence only)")
+    p.add_argument("scenes", nargs="+", help="scene names from the manifest, e.g. tschool")
+    p.add_argument("--view", choices=["top", "oblique"], default="top")
+    p.add_argument("--size", type=int, default=1600)
+    p.add_argument("--cut", type=float, help="drop triangles above this game-space height (see inside)")
+    p.add_argument("--png", help="output path (default: <out>/previews/...)")
+    p.set_defaults(fn=cmd_preview)
 
     a = ap.parse_args(argv)
     return a.fn(a)
