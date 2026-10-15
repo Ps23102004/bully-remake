@@ -1,7 +1,9 @@
-// OWNER: builder-B2 (doors)
+// OWNER: builder-B2 (doors); M3 steps builder-B3 (jimmy)
 #include "BullyWalkRunner.h"
 
-#include "BullyPawn.h"
+#include "BullyAnimInstance.h"
+#include "BullyCharacter.h"
+#include "Misc/App.h"
 #include "Components/CapsuleComponent.h"
 #include "Dom/JsonObject.h"
 #include "Engine/Engine.h"
@@ -102,6 +104,15 @@ bool UBullyWalkRunner::LoadScript(const FString& Path)
 		if (O->TryGetNumberField(TEXT("radius"), D)) { S.Radius = float(D); }
 		O->TryGetBoolField(TEXT("run"), S.bRun);
 		O->TryGetBoolField(TEXT("stop_on_door"), S.bStopOnDoor);
+		O->TryGetStringField(TEXT("gait"), S.Gait);
+		O->TryGetStringField(TEXT("cam"), S.Cam);
+		O->TryGetBoolField(TEXT("jump"), S.bJump);
+		O->TryGetStringField(TEXT("trigger"), S.Trigger);
+		if (O->TryGetNumberField(TEXT("jump_at"), D)) { S.JumpAt = float(D); }
+		if (O->TryGetNumberField(TEXT("trigger_time"), D)) { S.TriggerTime = float(D); }
+		if (O->TryGetNumberField(TEXT("after"), D)) { S.After = float(D); }
+		if (O->TryGetNumberField(TEXT("fps"), D)) { S.Fps = float(D); }
+		S.bHasPos = O->HasField(TEXT("x")) && O->HasField(TEXT("y"));
 		Steps.Add(S);
 	}
 	return Steps.Num() > 0;
@@ -113,7 +124,51 @@ void UBullyWalkRunner::Note(const FString& Line)
 	UE_LOG(LogBullyWalk, Display, TEXT("BR_WALK %s"), *Line);
 }
 
-void UBullyWalkRunner::BeginStep(UWorld* World, ABullyPawn* Pawn, FBullyWalkStep& S)
+namespace
+{
+	EBullyGait ParseGait(const FString& G, bool bRun)
+	{
+		if (G == TEXT("walk")) { return EBullyGait::Walk; }
+		if (G == TEXT("sprint")) { return EBullyGait::Sprint; }
+		if (G == TEXT("run")) { return EBullyGait::Run; }
+		return bRun ? EBullyGait::Run : EBullyGait::Walk;
+	}
+}
+
+FString UBullyWalkRunner::PawnState(ABullyCharacter* Pawn) const
+{
+	const UBullyAnimInstance* AI = Cast<UBullyAnimInstance>(Pawn->GetMesh()->GetAnimInstance());
+	return FString::Printf(TEXT("speed %.0f vz %.0f rise %.0f gait %d anim %s phase %.2f layers [%s] jumps %d lands %d"),
+		Pawn->GetHorizontalSpeed(), Pawn->GetVelocity().Z, Pawn->GetActorLocation().Z - Pawn->LastJumpZ, int32(Pawn->GetGait()),
+		AI ? AI->GetStateName() : TEXT("none"), AI ? AI->GetPhase() : 0.f, AI ? *AI->DescribeLayers() : TEXT(""), Pawn->JumpCount, Pawn->LandCount);
+}
+
+void UBullyWalkRunner::RequestShot(ABullyCharacter* Pawn, const FString& Name, bool bHighRes)
+{
+	const FString File = OutDir / FString::Printf(TEXT("%02d_%s.png"), ShotIndex++, *Name);
+	if (bHighRes && HighResX > 0 && HighResY > 0)
+	{
+		FHighResScreenshotConfig& HR = GetHighResScreenshotConfig();
+		HR.SetResolution(uint32(HighResX), uint32(HighResY), 1.0f);
+		HR.SetFilename(File);
+		HR.bMaskEnabled = false;
+		HR.bDumpBufferVisualizationTargets = false;
+		if (!(GEngine->GameViewport && GEngine->GameViewport->Viewport && GEngine->GameViewport->Viewport->TakeHighResScreenShot()))
+		{
+			Note(TEXT("HighResShot refused for ") + File);
+			++Failures;
+		}
+	}
+	else
+	{
+		FScreenshotRequest::RequestScreenshot(File, false, false);
+	}
+	const APlayerController* PC = Cast<APlayerController>(Pawn->GetController());
+	Note(FString::Printf(TEXT("shot '%s' -> %s; pawn %s yaw %.0f cam yaw %.0f pitch %.0f; %s; doors used %d"), *Name, *File, *Pawn->GetActorLocation().ToString(),
+		Pawn->GetActorRotation().Yaw, PC ? PC->GetControlRotation().Yaw : 0.f, PC ? FRotator::NormalizeAxis(PC->GetControlRotation().Pitch) : 0.f, *PawnState(Pawn), Pawn->DoorUseCount));
+}
+
+void UBullyWalkRunner::BeginStep(UWorld* World, ABullyCharacter* Pawn, FBullyWalkStep& S)
 {
 	StepStart = Elapsed;
 	LastProgressAt = Elapsed;
@@ -151,8 +206,31 @@ void UBullyWalkRunner::BeginStep(UWorld* World, ABullyPawn* Pawn, FBullyWalkStep
 	}
 	else if (S.Do == TEXT("walk_to"))
 	{
-		Pawn->SetRunning(S.bRun);
-		Note(FString::Printf(TEXT("walk_to '%s' from %s to (%.0f,%.0f) %s timeout %.0fs"), *S.Name, *Pawn->GetActorLocation().ToString(), S.Pos.X, S.Pos.Y, S.bRun ? TEXT("run") : TEXT("walk"), S.Seconds));
+		Pawn->SetScriptedGait(ParseGait(S.Gait, S.bRun));
+		Note(FString::Printf(TEXT("walk_to '%s' from %s to (%.0f,%.0f) gait %d cam %s timeout %.0fs"), *S.Name, *Pawn->GetActorLocation().ToString(), S.Pos.X, S.Pos.Y, int32(Pawn->GetGait()), *S.Cam, S.Seconds));
+	}
+	else if (S.Do == TEXT("action_shot"))
+	{
+		ActionPhase = 0;
+		bJumpIssued = false;
+		JumpCountAtStart = Pawn->JumpCount;
+		if (S.Gait != TEXT("none")) { Pawn->SetScriptedGait(ParseGait(S.Gait, S.bRun)); }
+		Note(FString::Printf(TEXT("action_shot '%s' from %s gait %d jump %d trigger %s"), *S.Name, *Pawn->GetActorLocation().ToString(), int32(Pawn->GetGait()), S.bJump ? 1 : 0, *S.Trigger));
+	}
+	else if (S.Do == TEXT("record_start"))
+	{
+		RecordDir = OutDir / TEXT("frames");
+		IFileManager::Get().MakeDirectory(*RecordDir, true);
+		FApp::SetUseFixedTimeStep(true);
+		FApp::SetFixedDeltaTime(1.0 / FMath::Max(1.f, S.Fps));
+		bRecording = true;
+		Note(FString::Printf(TEXT("record_start %.0f fps (fixed time step) -> %s"), S.Fps, *RecordDir));
+	}
+	else if (S.Do == TEXT("record_stop"))
+	{
+		bRecording = false;
+		FApp::SetUseFixedTimeStep(false);
+		Note(FString::Printf(TEXT("record_stop after %d frames"), RecordFrame));
 	}
 	else if (S.Do == TEXT("shot"))
 	{
@@ -165,7 +243,7 @@ void UBullyWalkRunner::BeginStep(UWorld* World, ABullyPawn* Pawn, FBullyWalkStep
 }
 
 // returns true when the step is finished
-bool UBullyWalkRunner::TickStep(UWorld* World, ABullyPawn* Pawn, FBullyWalkStep& S, float Dt)
+bool UBullyWalkRunner::TickStep(UWorld* World, ABullyCharacter* Pawn, FBullyWalkStep& S, float Dt)
 {
 	const double T = Elapsed - StepStart;
 	APlayerController* PC = Cast<APlayerController>(Pawn->GetController());
@@ -221,39 +299,97 @@ bool UBullyWalkRunner::TickStep(UWorld* World, ABullyPawn* Pawn, FBullyWalkStep&
 			return true;
 		}
 		const FVector Dir = To.GetSafeNormal();
-		if (PC)
+		if (PC && S.Cam != TEXT("follow"))
 		{
 			PC->SetControlRotation(FRotator(-12.f, Dir.Rotation().Yaw, 0.f));
 		}
 		Pawn->AddMovementInput(Dir, 1.f);
 		return false;
 	}
+	if (S.Do == TEXT("action_shot"))
+	{
+		if (ActionPhase == 0 || ActionPhase == 3)
+		{
+			// keep moving (toward the target, else along the step yaw)
+			FVector Dir = S.bHasPos ? (S.Pos - Pawn->GetActorLocation()) : FRotator(0.f, S.Yaw, 0.f).Vector();
+			Dir.Z = 0.f;
+			if (S.Gait != TEXT("none") && Dir.SizeSquared() > 40.f * 40.f)
+			{
+				Pawn->AddMovementInput(Dir.GetSafeNormal(), 1.f);
+			}
+			// camera: follow = the character's own follow cam; lock = behind the travel direction; side = 90 deg off it
+			if (PC && S.Cam != TEXT("follow") && Dir.SizeSquared() > 1.f)
+			{
+				const float Yaw = Dir.Rotation().Yaw + (S.Cam == TEXT("side") ? 90.f : S.Cam == TEXT("front") ? 180.f : 0.f);
+				PC->SetControlRotation(FRotator(S.Pitch, Yaw, 0.f));
+			}
+		}
+		if (ActionPhase == 0)
+		{
+			if (S.bJump && !bJumpIssued && T >= S.JumpAt)
+			{
+				bJumpIssued = true;
+				Pawn->Jump();
+				ActionMark = Elapsed;
+			}
+			const bool bJumped = Pawn->JumpCount > JumpCountAtStart;
+			bool bFire = false;
+			if (S.Trigger == TEXT("apex")) { bFire = bJumped && Pawn->GetVelocity().Z <= 0.f; }
+			else if (S.Trigger == TEXT("air")) { bFire = bJumped && Elapsed - ActionMark >= S.TriggerTime; }
+			else if (S.Trigger == TEXT("land") || S.Trigger == TEXT("none_land")) { bFire = bJumped && !Pawn->GetCharacterMovement()->IsFalling() && Elapsed - ActionMark > 0.15 && Elapsed - ActionMark >= S.TriggerTime; }
+			else { bFire = T >= S.TriggerTime; }
+			if (bFire && (S.Trigger == TEXT("none") || S.Trigger == TEXT("none_land")))
+			{
+				// no shot: just a scripted move (+ jump) for recordings
+				Note(FString::Printf(TEXT("action '%s' done at t=%.2f: %s; %s"), *S.Name, T, *Pawn->GetActorLocation().ToString(), *PawnState(Pawn)));
+				ActionPhase = 3;
+				ActionMark = Elapsed;
+				return false;
+			}
+			if (bFire)
+			{
+				UGameplayStatics::SetGamePaused(World, true);
+				Note(FString::Printf(TEXT("action_shot '%s' trigger %s at t=%.2f: paused at %s; %s"), *S.Name, *S.Trigger, T, *Pawn->GetActorLocation().ToString(), *PawnState(Pawn)));
+				ActionPhase = 1;
+				ActionMark = Elapsed;
+			}
+			else if (T > 30.0)
+			{
+				++Failures;
+				Note(FString::Printf(TEXT("action_shot '%s' TIMEOUT (trigger %s never fired)"), *S.Name, *S.Trigger));
+				return true;
+			}
+			return false;
+		}
+		if (ActionPhase == 1)
+		{
+			if (Elapsed - ActionMark >= SettleSeconds)
+			{
+				RequestShot(Pawn, S.Name, true);
+				ActionPhase = 2;
+				ActionMark = Elapsed;
+			}
+			return false;
+		}
+		if (ActionPhase == 2)
+		{
+			if (Elapsed - ActionMark >= 2.5)
+			{
+				UGameplayStatics::SetGamePaused(World, false);
+				ActionPhase = 3;
+				ActionMark = Elapsed;
+			}
+			return false;
+		}
+		return Elapsed - ActionMark >= S.After;
+	}
 	if (S.Do == TEXT("shot"))
 	{
 		const bool bWarm = ReadyAt >= 0.0 && Elapsed >= ReadyAt + WarmupSeconds;
 		if (ShotRequestedAt < 0.0 && bWarm && T >= SettleSeconds)
 		{
-			const FString File = OutDir / FString::Printf(TEXT("%02d_%s.png"), ShotIndex++, *S.Name);
-			if (HighResX > 0 && HighResY > 0)
-			{
-				FHighResScreenshotConfig& HR = GetHighResScreenshotConfig();
-				HR.SetResolution(uint32(HighResX), uint32(HighResY), 1.0f);
-				HR.SetFilename(File);
-				HR.bMaskEnabled = false;
-				HR.bDumpBufferVisualizationTargets = false;
-				if (!(GEngine->GameViewport && GEngine->GameViewport->Viewport && GEngine->GameViewport->Viewport->TakeHighResScreenShot()))
-				{
-					Note(TEXT("HighResShot refused for ") + File);
-					++Failures;
-				}
-			}
-			else
-			{
-				FScreenshotRequest::RequestScreenshot(File, false, false);
-			}
+			RequestShot(Pawn, S.Name, true);
 			ShotRequestedAt = Elapsed;
-			Note(FString::Printf(TEXT("shot '%s' -> %s; pawn %s yaw %.0f; doors used %d"), *S.Name, *File, *Pawn->GetActorLocation().ToString(),
-				PC ? PC->GetControlRotation().Yaw : 0.f, Pawn->DoorUseCount));
 		}
 		return ShotRequestedAt >= 0.0 && Elapsed >= ShotRequestedAt + 2.5;
 	}
@@ -302,12 +438,12 @@ void UBullyWalkRunner::Tick(float DeltaTime)
 		return;
 	}
 	APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0);
-	ABullyPawn* Pawn = PC ? Cast<ABullyPawn>(PC->GetPawn()) : nullptr;
+	ABullyCharacter* Pawn = PC ? Cast<ABullyCharacter>(PC->GetPawn()) : nullptr;
 	if (!Pawn)
 	{
 		if (Elapsed > ReadyAt + WarmupSeconds + 30.0)
 		{
-			Note(TEXT("no ABullyPawn possessed after 30 s; aborting"));
+			Note(TEXT("no ABullyCharacter possessed after 30 s; aborting"));
 			++Failures;
 			bQuit = true;
 			WriteResult();
@@ -317,11 +453,16 @@ void UBullyWalkRunner::Tick(float DeltaTime)
 	}
 	if (Current >= Steps.Num())
 	{
+		FApp::SetUseFixedTimeStep(false);
 		bQuit = true;
 		Note(FString::Printf(TEXT("script complete, %d failures"), Failures));
 		WriteResult();
 		GEngine->Exec(World, TEXT("quit"));
 		return;
+	}
+	if (bRecording && !FScreenshotRequest::IsScreenshotRequested())
+	{
+		FScreenshotRequest::RequestScreenshot(RecordDir / FString::Printf(TEXT("f_%05d.png"), RecordFrame++), false, false);
 	}
 	FBullyWalkStep& S = Steps[Current];
 	if (!bStepBegun)

@@ -7,7 +7,7 @@
 #include "GameFramework/Actor.h"
 #include "BullyDoorLink.generated.h"
 
-class ABullyPawn;
+class ABullyCharacter;
 class UBoxComponent;
 
 /**
@@ -40,7 +40,7 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Door") TObjectPtr<UBoxComponent> Trigger;
 
 	/** Teleport `Pawn` through this door to its partner (also callable from scripts/tests). */
-	UFUNCTION(BlueprintCallable, Category = "Door") bool UseDoor(ABullyPawn* Pawn);
+	UFUNCTION(BlueprintCallable, Category = "Door") bool UseDoor(ABullyCharacter* Pawn);
 
 	ABullyDoorLink* GetPartner();
 
@@ -50,8 +50,8 @@ protected:
 private:
 	UFUNCTION() void OnTriggerBegin(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
 		int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
-	void CompleteTransition(ABullyPawn* Pawn, ABullyDoorLink* Dest);
-	void FinishTransition(ABullyPawn* Pawn);
+	void CompleteTransition(ABullyCharacter* Pawn, ABullyDoorLink* Dest);
+	void FinishTransition(ABullyCharacter* Pawn);
 
 	TWeakObjectPtr<ABullyDoorLink> Partner;
 	FTimerHandle FadeTimer;
