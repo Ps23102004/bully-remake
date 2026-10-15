@@ -2,6 +2,8 @@
 #include "BullyCharacter.h"
 
 #include "BullyAnimInstance.h"
+#include "BullyCombatAnimInstance.h"
+#include "BullyCombatComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/CapsuleComponent.h"
@@ -70,7 +72,7 @@ ABullyCharacter::ABullyCharacter()
 	USkeletalMeshComponent* SMC = GetMesh();
 	SMC->SetRelativeLocation(FVector(0.f, 0.f, -CapsuleHalfHeight));
 	SMC->SetRelativeRotation(FRotator(0.f, MeshYawOffset, 0.f));
-	SMC->SetAnimInstanceClass(UBullyAnimInstance::StaticClass());
+	SMC->SetAnimInstanceClass(UBullyCombatAnimInstance::StaticClass());
 	SMC->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 	SMC->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	SMC->bCastDynamicShadow = true;
@@ -85,6 +87,9 @@ ABullyCharacter::ABullyCharacter()
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
+
+	// slice-combat: melee for the player (the enemy pawn subclass flips the team)
+	Combat = CreateDefaultSubobject<UBullyCombatComponent>(TEXT("Combat"));
 
 	// Placeholder body (engine primitives): shown only when the imported Jimmy assets are missing.
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderFinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
@@ -122,7 +127,7 @@ void ABullyCharacter::LoadJimmy()
 	if (SK)
 	{
 		GetMesh()->SetSkeletalMeshAsset(SK);
-		GetMesh()->SetAnimInstanceClass(UBullyAnimInstance::StaticClass());
+		GetMesh()->SetAnimInstanceClass(UBullyCombatAnimInstance::StaticClass());   // locomotion + the combat layer
 		const int32 Bones = SK->GetRefSkeleton().GetNum();
 		UE_LOG(LogBullyChar, Display, TEXT("BR_CHAR Jimmy mesh %s: %d bones, %d materials, anim instance %s"),
 			*MeshPath, Bones, SK->GetMaterials().Num(), *GetNameSafe(GetMesh()->GetAnimInstance()));
@@ -239,6 +244,10 @@ void ABullyCharacter::UpdateGait()
 	UCharacterMovementComponent* Move = GetCharacterMovement();
 	const float AccelTime = Gait == EBullyGait::Walk ? WalkAccelTime : Gait == EBullyGait::Run ? RunAccelTime : SprintAccelTime;
 	const float StopTime = Gait == EBullyGait::Walk ? WalkStopTime : RunStopTime;
+	if (Combat)
+	{
+		Speed *= Combat->GetMoveSpeedScale();   // locked-on strafing / blocking (0 = rooted)
+	}
 	Move->MaxWalkSpeed = Speed;
 	Move->MaxAcceleration = Speed / FMath::Max(0.05f, AccelTime);
 	// constant deceleration from the current speed (sprint stops take longer, as in the game's skid)
@@ -276,7 +285,21 @@ void ABullyCharacter::Tick(float DeltaSeconds)
 
 void ABullyCharacter::UpdateCamera(float Dt)
 {
-	if (!bCameraAutoFollow || !Controller || !GetWorld())
+	if (!Controller || !GetWorld() || !IsPlayerControlled())
+	{
+		return;
+	}
+	if (Combat && Combat->IsLockedOn() && LockOnCameraYawRate > 0.f)
+	{
+		// lock-on: keep Jimmy and the target in frame (camera looks along player -> target)
+		FRotator R = Controller->GetControlRotation();
+		const FVector To = Combat->GetLockTarget()->GetOwner()->GetActorLocation() - GetActorLocation();
+		const float DYaw = FMath::FindDeltaAngleDegrees(R.Yaw, To.Rotation().Yaw);
+		R.Yaw += FMath::Clamp(DYaw, -LockOnCameraYawRate * Dt, LockOnCameraYawRate * Dt);
+		Controller->SetControlRotation(R);
+		return;
+	}
+	if (!bCameraAutoFollow)
 	{
 		return;
 	}
@@ -302,7 +325,7 @@ void ABullyCharacter::UpdateCamera(float Dt)
 
 void ABullyCharacter::UpdateFootDiagnostics(float Dt)
 {
-	if (!bHasJimmyMesh || Dt <= 0.f || !GetWorld())
+	if (!bHasJimmyMesh || Dt <= 0.f || !GetWorld() || !bLogLocomotion)
 	{
 		return;
 	}
@@ -410,6 +433,15 @@ void ABullyCharacter::BuildInputAssets()
 	SprintAction->ValueType = EInputActionValueType::Boolean;
 	WalkAction = NewObject<UInputAction>(this, TEXT("IA_Walk"));
 	WalkAction->ValueType = EInputActionValueType::Boolean;
+	// slice-combat
+	AttackAction = NewObject<UInputAction>(this, TEXT("IA_Attack"));
+	AttackAction->ValueType = EInputActionValueType::Boolean;
+	GrappleAction = NewObject<UInputAction>(this, TEXT("IA_Grapple"));
+	GrappleAction->ValueType = EInputActionValueType::Boolean;
+	BlockAction = NewObject<UInputAction>(this, TEXT("IA_Block"));
+	BlockAction->ValueType = EInputActionValueType::Boolean;
+	LockOnAction = NewObject<UInputAction>(this, TEXT("IA_LockOn"));
+	LockOnAction->ValueType = EInputActionValueType::Boolean;
 
 	auto Swizzle = [this]() { UInputModifierSwizzleAxis* M = NewObject<UInputModifierSwizzleAxis>(this); M->Order = EInputAxisSwizzle::YXZ; return M; };
 	auto Negate = [this](bool X, bool Y, bool Z) { UInputModifierNegate* M = NewObject<UInputModifierNegate>(this); M->bX = X; M->bY = Y; M->bZ = Z; return M; };
@@ -441,6 +473,28 @@ void ABullyCharacter::BuildInputAssets()
 	MappingContext->MapKey(SprintAction, EKeys::Gamepad_FaceButton_Left);
 	MappingContext->MapKey(WalkAction, EKeys::LeftAlt);
 	MappingContext->MapKey(WalkAction, EKeys::LeftControl);
+
+	// slice-combat. Keyboard/mouse: LMB attack, F grapple, Q (hold) block, RMB (hold) lock-on.
+	// Gamepad: B attack, RB grapple, LB (hold) block, RT (hold) lock-on. (A jump, X sprint, Y interact are taken;
+	// Esc stays on the controller's pause menu.)
+	MappingContext->MapKey(AttackAction, EKeys::LeftMouseButton);
+	MappingContext->MapKey(AttackAction, EKeys::Gamepad_FaceButton_Right);
+	MappingContext->MapKey(GrappleAction, EKeys::F);
+	MappingContext->MapKey(GrappleAction, EKeys::Gamepad_RightShoulder);
+	MappingContext->MapKey(BlockAction, EKeys::Q);
+	MappingContext->MapKey(BlockAction, EKeys::Gamepad_LeftShoulder);
+	MappingContext->MapKey(LockOnAction, EKeys::RightMouseButton);
+	MappingContext->MapKey(LockOnAction, EKeys::Gamepad_RightTrigger);
+}
+
+const UInputAction* ABullyCharacter::GetCombatAction(FName Which) const
+{
+	if (Which == TEXT("attack")) { return AttackAction; }
+	if (Which == TEXT("grapple")) { return GrappleAction; }
+	if (Which == TEXT("block")) { return BlockAction; }
+	if (Which == TEXT("lockon")) { return LockOnAction; }
+	if (Which == TEXT("move")) { return MoveAction; }
+	return nullptr;
 }
 
 void ABullyCharacter::PawnClientRestart()
@@ -472,12 +526,18 @@ void ABullyCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 		EIC->BindAction(MoveAction, ETriggerEvent::Completed, this, &ABullyCharacter::OnMoveCompleted);
 		EIC->BindAction(LookAction, ETriggerEvent::Triggered, this, &ABullyCharacter::OnLook);
 		EIC->BindAction(LookPadAction, ETriggerEvent::Triggered, this, &ABullyCharacter::OnLookPad);
-		EIC->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
+		EIC->BindAction(JumpAction, ETriggerEvent::Started, this, &ABullyCharacter::OnJumpPressed);
 		EIC->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
 		EIC->BindAction(SprintAction, ETriggerEvent::Started, this, &ABullyCharacter::OnSprint);
 		EIC->BindAction(SprintAction, ETriggerEvent::Completed, this, &ABullyCharacter::OnSprintEnd);
 		EIC->BindAction(WalkAction, ETriggerEvent::Started, this, &ABullyCharacter::OnWalk);
 		EIC->BindAction(WalkAction, ETriggerEvent::Completed, this, &ABullyCharacter::OnWalkEnd);
+		EIC->BindAction(AttackAction, ETriggerEvent::Started, this, &ABullyCharacter::OnAttack);
+		EIC->BindAction(GrappleAction, ETriggerEvent::Started, this, &ABullyCharacter::OnGrapple);
+		EIC->BindAction(BlockAction, ETriggerEvent::Started, this, &ABullyCharacter::OnBlock);
+		EIC->BindAction(BlockAction, ETriggerEvent::Completed, this, &ABullyCharacter::OnBlockEnd);
+		EIC->BindAction(LockOnAction, ETriggerEvent::Started, this, &ABullyCharacter::OnLockOn);
+		EIC->BindAction(LockOnAction, ETriggerEvent::Completed, this, &ABullyCharacter::OnLockOnEnd);
 	}
 	else
 	{
@@ -493,6 +553,11 @@ void ABullyCharacter::OnMove(const FInputActionValue& Value)
 		return;
 	}
 	bHasScriptedGait = false;   // a player took over
+	if (Combat && !Combat->CanMove())
+	{
+		MoveIntent = 0.f;           // attacking / hit / grappling: the stick does nothing (no sliding out of a swing)
+		return;
+	}
 	MoveIntent = FMath::Clamp(V.Size(), 0.f, 1.f);
 	LastMoveInputTime = GetWorld()->GetTimeSeconds();
 	const FRotator Yaw(0.f, Controller->GetControlRotation().Yaw, 0.f);
@@ -561,4 +626,46 @@ void ABullyCharacter::SaveLookSettings() const
 	File.SetBool(Section, TEXT("bInvertLookY"), bInvertLookY);
 	const bool bOk = File.Write(Path);
 	UE_LOG(LogBullyChar, Display, TEXT("BR_SETTINGS saved look X=%.3f Y=%.3f invertY=%d -> %s (write ok=%d exists=%d)"), LookSensitivityX, LookSensitivityY, bInvertLookY ? 1 : 0, *Path, bOk ? 1 : 0, IFileManager::Get().FileExists(*Path) ? 1 : 0);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// slice-combat input
+
+void ABullyCharacter::OnJumpPressed(const FInputActionValue& Value)
+{
+	if (Combat && !Combat->CanMove())
+	{
+		return;
+	}
+	Jump();
+}
+
+void ABullyCharacter::OnAttack(const FInputActionValue& Value)
+{
+	if (Combat) { Combat->RequestAttack(); }
+}
+
+void ABullyCharacter::OnGrapple(const FInputActionValue& Value)
+{
+	if (Combat) { Combat->RequestGrapple(); }
+}
+
+void ABullyCharacter::OnBlock(const FInputActionValue& Value)
+{
+	if (Combat) { Combat->SetBlockHeld(true); }
+}
+
+void ABullyCharacter::OnBlockEnd(const FInputActionValue& Value)
+{
+	if (Combat) { Combat->SetBlockHeld(false); }
+}
+
+void ABullyCharacter::OnLockOn(const FInputActionValue& Value)
+{
+	if (Combat) { Combat->SetLockOnHeld(true); NoteLookInput(); }
+}
+
+void ABullyCharacter::OnLockOnEnd(const FInputActionValue& Value)
+{
+	if (Combat) { Combat->SetLockOnHeld(false); }
 }
