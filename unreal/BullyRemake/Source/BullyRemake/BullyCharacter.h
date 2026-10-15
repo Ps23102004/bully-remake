@@ -12,6 +12,7 @@ class USpringArmComponent;
 class UStaticMeshComponent;
 class UInputAction;
 class UInputMappingContext;
+class UBullyCombatComponent;
 
 UENUM(BlueprintType)
 enum class EBullyGait : uint8
@@ -114,6 +115,10 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Camera") float GamepadLookYawRate = 150.f;
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Camera") float GamepadLookPitchRate = 100.f;
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Camera") bool bSnapToGroundOnBeginPlay = true;
+	/** slice-combat: while locked on, the camera yaw swings to frame the target at this rate (deg/s; 0 = off). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Camera") float LockOnCameraYawRate = 240.f;
+	/** Once-a-second BR_CHAR locomotion / foot-slide diagnostics (the combat pawn turns them off). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Body") bool bLogLocomotion = true;
 
 	// --- runtime API ---------------------------------------------------------------------------------------
 	/** Re-applies every Config value to the components (also called from BeginPlay). */
@@ -131,6 +136,8 @@ public:
 	/** Compatibility with the M2 scripts: run (true) / walk (false). */
 	UFUNCTION(BlueprintCallable, Category = "Bully") void SetRunning(bool bRun) { SetScriptedGait(bRun ? EBullyGait::Run : EBullyGait::Walk); }
 	float GetHorizontalSpeed() const;
+	/** slice-combat: melee (attack / block / grapple / lock-on), health and hit reactions. */
+	UBullyCombatComponent* GetCombat() const { return Combat; }
 	bool HasJimmyMesh() const { return bHasJimmyMesh; }
 	/** Drops the camera boom's location lag for two frames (door teleports: no swoop from the old position). */
 	void SnapCamera();
@@ -171,6 +178,13 @@ private:
 	void OnSprintEnd(const FInputActionValue& Value) { bSprintHeld = false; }
 	void OnWalk(const FInputActionValue& Value) { bWalkHeld = true; }
 	void OnWalkEnd(const FInputActionValue& Value) { bWalkHeld = false; }
+	void OnJumpPressed(const FInputActionValue& Value);
+	void OnAttack(const FInputActionValue& Value);
+	void OnGrapple(const FInputActionValue& Value);
+	void OnBlock(const FInputActionValue& Value);
+	void OnBlockEnd(const FInputActionValue& Value);
+	void OnLockOn(const FInputActionValue& Value);
+	void OnLockOnEnd(const FInputActionValue& Value);
 	void BuildInputAssets();
 	void UpdateGait();
 	void UpdateCamera(float Dt);
@@ -181,6 +195,7 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = "Bully") TObjectPtr<UCameraComponent> FollowCamera;
 	UPROPERTY(VisibleAnywhere, Category = "Bully") TObjectPtr<UStaticMeshComponent> BodyVis;
 	UPROPERTY(VisibleAnywhere, Category = "Bully") TObjectPtr<UStaticMeshComponent> HeadVis;
+	UPROPERTY(VisibleAnywhere, Category = "Bully") TObjectPtr<UBullyCombatComponent> Combat;
 
 	UPROPERTY(Transient) TObjectPtr<UInputMappingContext> MappingContext;
 	UPROPERTY(Transient) TObjectPtr<UInputAction> MoveAction;
@@ -189,6 +204,15 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UInputAction> JumpAction;
 	UPROPERTY(Transient) TObjectPtr<UInputAction> SprintAction;
 	UPROPERTY(Transient) TObjectPtr<UInputAction> WalkAction;
+	UPROPERTY(Transient) TObjectPtr<UInputAction> AttackAction;
+	UPROPERTY(Transient) TObjectPtr<UInputAction> GrappleAction;
+	UPROPERTY(Transient) TObjectPtr<UInputAction> BlockAction;
+	UPROPERTY(Transient) TObjectPtr<UInputAction> LockOnAction;
+
+public:
+	/** Input actions (the headless combat test injects through them, exercising the real bindings). */
+	const UInputAction* GetCombatAction(FName Which) const;
+private:
 
 	EBullyGait Gait = EBullyGait::Run;
 	EBullyGait ScriptedGait = EBullyGait::Run;
