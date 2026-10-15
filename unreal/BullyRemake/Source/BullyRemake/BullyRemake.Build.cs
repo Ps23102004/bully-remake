@@ -14,5 +14,8 @@ public class BullyRemake : ModuleRules
 			"InputCore",
 			"EnhancedInput"
 		});
+
+		// BullyShotRunner: JSON shot lists for offscreen evidence captures.
+		PrivateDependencyModuleNames.AddRange(new string[] { "Json" });
 	}
 }
