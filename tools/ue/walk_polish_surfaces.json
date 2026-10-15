@@ -1,0 +1,14 @@
+{
+ "_owner": "polish1",
+ "_note": "Renderer-free footstep-surface map: probes the surface under the foot (same code path as a foot plant) over the courtyard grid and at interior points, logs an ASCII map + the base texture behind each answer. Run with tools/ue/run_walk_nullrhi.sh. Used to tune Config/FootstepSurfaces.json rules.",
+ "warmup_seconds": 5,
+ "settle_seconds": 1,
+ "max_compile_wait_seconds": 1800,
+ "exec": [],
+ "steps": [
+  {"do": "wait", "seconds": 2},
+  {"do": "surface_probe", "name": "courtyard_grid", "x0": 19000, "y0": 3000, "x1": 33000, "y1": 12000, "step": 300, "z": 2500},
+  {"do": "surface_probe", "name": "named_points", "z": 2500, "points": [[32200, 7300], [28600, 7150], [24500, 7150], [27000, 4800], [23500, 5000], [30700, 6600], [29000, 6700], [21320, 7330]]},
+  {"do": "surface_probe", "name": "interior_lobby", "z": 400, "points": [[-62860, 32200], [-62860, 31400], [-62860, 30000], [-62860, 29500], [-63500, 30900], [-62300, 30900]]}
+ ]
+}

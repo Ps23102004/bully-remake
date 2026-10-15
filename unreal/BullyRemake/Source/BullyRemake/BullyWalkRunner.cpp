@@ -1,6 +1,7 @@
 // OWNER: builder-B2 (doors); M3 steps builder-B3 (jimmy)
 #include "BullyWalkRunner.h"
 
+#include "AmbientFootsteps.h"
 #include "AmbientWalker.h"
 #include "BullyAnimInstance.h"
 #include "EngineUtils.h"
@@ -123,6 +124,21 @@ bool UBullyWalkRunner::LoadScript(const FString& Path)
 		O->TryGetStringField(TEXT("student"), S.Student);
 		O->TryGetBoolField(TEXT("head_on"), S.bHeadOn);
 		if (O->TryGetNumberField(TEXT("spawn_dist"), D)) { S.SpawnDist = float(D); }
+		const TArray<TSharedPtr<FJsonValue>>* Pts = nullptr;
+		if (O->TryGetArrayField(TEXT("points"), Pts))
+		{
+			for (const TSharedPtr<FJsonValue>& PV : *Pts)
+			{
+				const TArray<TSharedPtr<FJsonValue>>& XY = PV->AsArray();
+				if (XY.Num() >= 2) { S.Points.Add(FVector2D(XY[0]->AsNumber(), XY[1]->AsNumber())); }
+			}
+		}
+		if (O->TryGetNumberField(TEXT("step"), D) && O->HasField(TEXT("x0")))
+		{
+			S.GridStep = float(D);
+			S.GridMin = FVector2D(O->GetNumberField(TEXT("x0")), O->GetNumberField(TEXT("y0")));
+			S.GridMax = FVector2D(O->GetNumberField(TEXT("x1")), O->GetNumberField(TEXT("y1")));
+		}
 		S.bHasPos = O->HasField(TEXT("x")) && O->HasField(TEXT("y"));
 		Steps.Add(S);
 	}
@@ -219,6 +235,58 @@ void UBullyWalkRunner::BeginStep(UWorld* World, ABullyCharacter* Pawn, FBullyWal
 	{
 		Pawn->SetScriptedGait(ParseGait(S.Gait, S.bRun));
 		Note(FString::Printf(TEXT("walk_to '%s' from %s to (%.0f,%.0f) gait %d cam %s timeout %.0fs"), *S.Name, *Pawn->GetActorLocation().ToString(), S.Pos.X, S.Pos.Y, int32(Pawn->GetGait()), *S.Cam, S.Seconds));
+	}
+	else if (S.Do == TEXT("surface_probe"))
+	{
+		UBullyFootstepComponent* FC = Pawn->FindComponentByClass<UBullyFootstepComponent>();
+		if (!FC || !UBullyFootstepComponent::TablesAvailable())
+		{
+			++Failures;
+			Note(TEXT("surface_probe FAILED: no footstep component on the player or tables off"));
+		}
+		else
+		{
+			TArray<FVector2D> Pts = S.Points;
+			TArray<FString> Rows;
+			if (S.GridStep > 0.f)
+			{
+				for (float Y = S.GridMin.Y; Y <= S.GridMax.Y + 0.1f; Y += S.GridStep)
+				{
+					FString Row;
+					for (float X = S.GridMin.X; X <= S.GridMax.X + 0.1f; X += S.GridStep)
+					{
+						FHitResult H;
+						FCollisionQueryParams P(SCENE_QUERY_STAT(BullyProbeGround), true, Pawn);
+						TCHAR C = '_';
+						if (World->LineTraceSingleByChannel(H, FVector(X, Y, S.bHasZ ? S.Pos.Z : 3000.f), FVector(X, Y, -500.f), ECC_Visibility, P))
+						{
+							FString Why; bool bInt = false;
+							const FString Sf = FC->ProbeSurface(H.ImpactPoint, Why, bInt);
+							C = Sf.IsEmpty() ? TCHAR('?') : Sf[0];
+						}
+						Row.AppendChar(C);
+					}
+					Rows.Add(FString::Printf(TEXT("y=%6.0f %s"), Y, *Row));
+				}
+				Note(FString::Printf(TEXT("surface_probe '%s' grid x %.0f..%.0f step %.0f (first letter of the surface: c cement, g grass, d dirt/dock, m mud/metal, l lino, f floor, _ no ground)"), *S.Name, S.GridMin.X, S.GridMax.X, S.GridStep));
+				for (const FString& R : Rows) { Note(R); }
+			}
+			for (const FVector2D& Pt : Pts)
+			{
+				FHitResult H;
+				FCollisionQueryParams P(SCENE_QUERY_STAT(BullyProbeGround), true, Pawn);
+				if (World->LineTraceSingleByChannel(H, FVector(Pt.X, Pt.Y, S.bHasZ ? S.Pos.Z : 3000.f), FVector(Pt.X, Pt.Y, -500.f), ECC_Visibility, P))
+				{
+					FString Why; bool bInt = false;
+					const FString Sf = FC->ProbeSurface(H.ImpactPoint, Why, bInt);
+					Note(FString::Printf(TEXT("surface_probe '%s' (%.0f,%.0f) ground z=%.0f actor=%s -> %s%s [%s]"), *S.Name, Pt.X, Pt.Y, H.ImpactPoint.Z, *GetNameSafe(H.GetActor()), *Sf, bInt ? TEXT(" (interior)") : TEXT(""), *Why));
+				}
+				else
+				{
+					Note(FString::Printf(TEXT("surface_probe '%s' (%.0f,%.0f): no ground"), *S.Name, Pt.X, Pt.Y));
+				}
+			}
+		}
 	}
 	else if (S.Do == TEXT("walk_into_walker"))
 	{

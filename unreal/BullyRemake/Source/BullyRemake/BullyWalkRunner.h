@@ -36,6 +36,10 @@ struct FBullyWalkStep
 	FString Student;                   // walk_into_walker: AmbientLoops student id ("" = nearest walker); footstep_probe: label
 	float SpawnDist = 500.f;           // walk_into_walker head_on: the player is placed this far ahead of the walker's heading
 	bool bHeadOn = true;
+	// surface_probe: points (x,y pairs) or a grid
+	TArray<FVector2D> Points;
+	FVector2D GridMin = FVector2D::ZeroVector, GridMax = FVector2D::ZeroVector;
+	float GridStep = 0.f;
 };
 
 /**
@@ -51,6 +55,8 @@ struct FBullyWalkStep
  *    "trigger":"time|apex|air|land","trigger_time":..,"after":1.0} moves the character, pauses the game at the trigger,
  *    takes a settled high-res shot of the frozen moment, unpauses and keeps moving;
  *   {"do":"record_start","fps":30} / {"do":"record_stop"}: fixed time step + one viewport PNG per frame into <dir>/frames/.
+ * Polish1: {"do":"surface_probe","name":..,"points":[[x,y],..]} or {"x0","y0","x1","y1","step"} logs the footstep surface
+ *   (and why: base texture / model / scene) at the ground below each point; a grid also prints an ASCII map.
  * Polish1: {"do":"walk_into_walker","name":..,"student":"boy01","head_on":true,"spawn_dist":500,"gait":"run","timeout":10}
  *   puts the player on the walker's heading (or leaves it where it is) and walks straight at the walker for `timeout`
  *   seconds; logs the closest centre distance (a capsule-capsule contact is 2 x 30 cm, anything under ~50 cm means the

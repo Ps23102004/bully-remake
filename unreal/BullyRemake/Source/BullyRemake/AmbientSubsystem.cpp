@@ -319,6 +319,7 @@ void UAmbientSubsystem::Spawn(UWorld& World)
 			if (UBullyFootstepComponent* F = NewObject<UBullyFootstepComponent>(Wk, TEXT("Footsteps")))
 			{
 				F->Sounds = StepSets.FindRef((*St)->GetStringField(TEXT("footsteps")));
+				F->Role = (*St)->GetStringField(TEXT("footsteps")) == TEXT("female") ? TEXT("female") : TEXT("student");
 				F->Tag = SId;
 				F->RegisterComponent();
 			}
@@ -416,9 +417,10 @@ void UAmbientSubsystem::AttachPlayerFootsteps()
 {
 	UWorld* W = GetWorld();
 	APawn* P = W ? UGameplayStatics::GetPlayerPawn(W, 0) : nullptr;
-	if (!P || bPlayerAttached || PlayerSteps.Num() == 0) { return; }
+	if (!P || bPlayerAttached || (PlayerSteps.Num() == 0 && !UBullyFootstepComponent::TablesAvailable())) { return; }
 	UBullyFootstepComponent* F = NewObject<UBullyFootstepComponent>(P, TEXT("Footsteps"));
 	F->Sounds = PlayerSteps;
+	F->Role = TEXT("player");
 	F->Tag = TEXT("player");
 	F->Volume = 0.9f;
 	F->RegisterComponent();

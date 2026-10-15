@@ -42,14 +42,6 @@
    "timeout": 10
   },
   {
-   "do": "walk_into_walker",
-   "name": "W4_boy01_plaza_follow_from_here",
-   "student": "boy01",
-   "head_on": false,
-   "gait": "run",
-   "timeout": 8
-  },
-  {
    "do": "teleport",
    "name": "to_street_start",
    "x": 32200,

@@ -54,7 +54,7 @@ def sine(n, rate=22050, f=440.0, amp=8000):
     return [int(amp * math.sin(2 * math.pi * f * i / rate)) for i in range(n)]
 
 
-def make_sea(entries, bank="TestBank"):
+def make_sea(entries, bank="TestBank", sdbk=None):
     """entries: list of (name, samples, rate). Returns SEA bytes (5-word header, SDBK stub, WBND)."""
     waves, meta, names = b"", b"", b""
     for name, samples, rate in entries:
@@ -74,7 +74,7 @@ def make_sea(entries, bank="TestBank"):
     wbnd = (b"WBND" + struct.pack("<2I", 44, 42) +
             struct.pack("<10I", seg0, len(bank_data), seg1, len(meta), seg2, 0, seg3, len(names), seg4, len(waves)) +
             bank_data + meta + names + waves)
-    sdbk = b"SDBK" + b"\0" * 60
+    sdbk = sdbk if sdbk is not None else b"SDBK" + b"\0" * 60
     pre = b"AuthoringString\0" + b"C:\\secret\\path\0"
     head_len = 20 + len(pre)
     hdr = struct.pack("<5I", head_len, len(sdbk), len(wbnd), 1, 4)
@@ -242,6 +242,80 @@ def test_stream_bin_rejects_wrong_magic(tmp_path):
 import os
 
 INSTALL = os.environ.get("BULLY_INSTALL")
+def make_sdbk(cues, bank="TestBank"):
+    """cues: list of (cue name, wave index, base pitch cents, pitch_min, pitch_max). Builds the one shape Bully's banks
+    use (XACT 3 sound bank, tool 44 / format 43): simple cues -> 71-byte complex sounds, 1 track, 2 RPC codes, 1 clip,
+    1 event of type 4 (PlayWave with effect variation, 40 bytes)."""
+    n = len(cues)
+    names = b"".join(c[0].encode() + b"\0" for c in cues) + b"\0"
+    hdr_len, wbn_off = 0x4A, 0x4A + 64
+    sounds_off = wbn_off + 64
+    sounds = b""
+    for i, (_nm, widx, pitch, pmin, pmax) in enumerate(cues):
+        base = sounds_off + len(sounds)
+        s = struct.pack("<BHBhBH", 3, 1, 180, pitch, 255, 71) + bytes([1]) + struct.pack("<H", 11) + bytes([2]) + struct.pack("<2I", 224, 247)
+        s += bytes([180]) + struct.pack("<I2H", base + 30, 24000, 1000)
+        ev = struct.pack("<IHBB", 0x20000004, 0, 0xFF, 4) + struct.pack("<HB", widx, 0) + b"\0" * 5 + struct.pack("<2hBB", pmin, pmax, 180, 180)
+        ev += struct.pack("<4f", 1000.0, 1000.0, 30.0, 30.0) + b"\0\x30"
+        assert len(ev) == 40
+        s += bytes([1]) + ev
+        assert len(s) == 71, len(s)
+        sounds += s
+    simple_off = sounds_off + len(sounds)
+    simple = b"".join(struct.pack("<BI", 4, sounds_off + 71 * i) for i in range(n))
+    names_off = simple_off + len(simple)
+    body = bank.encode().ljust(64, b"\0") + bank.encode().ljust(64, b"\0") + sounds + simple + names
+    head = b"SDBK" + struct.pack("<3H", 44, 43, 0x1234) + struct.pack("<2I", 1, 2) + bytes([1])
+    head += struct.pack("<4H", n, 0, 0, n) + bytes([1]) + struct.pack("<3H", n, len(names), 0)
+    head += struct.pack("<10I", simple_off, 0xFFFFFFFF, names_off, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, wbn_off, 0, 0, sounds_off)
+    assert len(head) == hdr_len, len(head)
+    return head + body
+
+
+def test_sdbk_cue_graph_parse():
+    cues = [("WALK_GRASS0", 1, 0, -300, 200), ("WALK_GRASS1", 0, 0, -300, 200), ("RUN_CEM_PL_DRY0", 1, -900, -100, 100)]
+    sea = make_sea([("Shoe_A", sine(300), 22050), ("Shoe_B", sine(300), 22050)], sdbk=make_sdbk(cues))
+    b = audio.parse_sea(sea)
+    sd = audio.parse_sdbk(b)
+    assert (sd.tool_version, sd.format_version) == (44, 43) and sd.wave_bank_names == ["TestBank"]
+    assert [c.name for c in sd.cues] == ["WALK_GRASS0", "WALK_GRASS1", "RUN_CEM_PL_DRY0"]
+    t = audio.cue_table(b)
+    assert t["WALK_GRASS0"]["wave"] == "Shoe_B" and t["WALK_GRASS1"]["wave"] == "Shoe_A"
+    assert (t["RUN_CEM_PL_DRY0"]["pitch_cents"], t["RUN_CEM_PL_DRY0"]["pitch_min"], t["RUN_CEM_PL_DRY0"]["pitch_max"]) == (-900, -100, 100)
+    assert abs(t["WALK_GRASS0"]["volume_db"] - (-24.0)) < 0.1   # volume byte 180 -> -96 + 180/255 * 102.0206
+
+
+def test_sdbk_rejects_unknown_shapes():
+    bad = bytearray(make_sdbk([("A", 0, 0, 0, 0)]))
+    bad[0x4A + 128] = 1            # sound flags 1 instead of 3
+    with pytest.raises(audio.AudioError):
+        audio.parse_sdbk(audio.parse_sea(make_sea([("S", sine(300), 22050)], sdbk=bytes(bad))))
+    with pytest.raises(audio.AudioError):   # event type 1, not the one decoded shape
+        bad = bytearray(make_sdbk([("A", 0, 0, 0, 0)]))
+        bad[0x4A + 128 + 31] = 0x01
+        audio.parse_sdbk(audio.parse_sea(make_sea([("S", sine(300), 22050)], sdbk=bytes(bad))))
+
+
+def test_footstep_resolution_picks_families_and_falls_back():
+    cues = [("WALK_CEM_PL_DRY0", 0, -1200, -300, 200), ("WALK_CEM_PL_DRY1", 1, -1200, -300, 200),
+            ("WALK_GRASS0", 1, 0, -300, 200), ("RUN_GRASS0", 0, 300, -300, 200), ("FST_RUN_GRASS0", 1, 500, -300, 200)]
+    sea = make_sea([("A", sine(300), 22050), ("B", sine(300), 22050)], bank="FeetTest", sdbk=make_sdbk(cues, "FeetTest"))
+    cfg = {"contexts": {"exterior": ["FeetTest"]},
+           "gait_prefix": {"player": {"walk": "WALK", "run": "RUN", "sprint": ["FRUN", "FST_RUN"]}},
+           "surfaces": {"cement": {"player": ["{G}_CEM_PL_DRY"]}, "grass": {"player": ["{G}_GRASS"]}}}
+    import tempfile, pathlib
+    with tempfile.TemporaryDirectory() as td:
+        (pathlib.Path(td) / "audio" / "xact").mkdir(parents=True)
+        (pathlib.Path(td) / "audio" / "xact" / "FeetTest.SEA").write_bytes(sea)
+        r = audio.resolve_footsteps(td, cfg, log=lambda m: None)
+    ex = r["contexts"]["exterior"]
+    assert [c["cue"] for c in ex["cement"]["player"]["walk"]] == ["WALK_CEM_PL_DRY0", "WALK_CEM_PL_DRY1"]
+    assert [c["wave"] for c in ex["grass"]["player"]["sprint"]] == ["B"]            # FRUN_GRASS absent -> FST_RUN_GRASS
+    assert "cement" in ex and "run" not in ex["cement"]["player"]                    # no RUN_CEM_PL_DRY in this bank
+    assert any("cement/player/run" in u for u in r["unresolved"])
+    assert r["waves"] == {"FeetTest": ["A", "B"]}
+
+
 real = pytest.mark.skipif(not INSTALL or not os.path.isdir(os.path.join(INSTALL or "", "audio", "xact")), reason="BULLY_INSTALL not set")
 
 
@@ -274,3 +348,21 @@ def test_real_install_ambs_stream_school_outdoor_is_stereo_adpcm():
     assert (e.name, e.channels, e.tag, e.block_align) == ("NewSchoolOutdoor_F", 2, 2, 140)
     pcm = audio.decode_msadpcm(b.raw(e)[:140 * 200], 2, 140)
     assert len(pcm) == 128 * 200 * 2 and max(abs(x) for x in pcm) > 1000
+
+
+@real
+def test_real_install_all_sound_banks_decode_one_shape_and_footsteps_map_to_surfaces():
+    total = 0
+    for p in audio.sea_files(INSTALL):
+        b = audio.parse_sea(p)
+        sd = audio.parse_sdbk(b)           # raises on any shape other than the one decoded
+        total += len(sd.cues)
+        t = audio.cue_table(b)             # dict by name: 2 of the 11,075 cues share a name with another cue of their bank
+        assert all(0 <= c["wave_index"] < len(b.entries) for c in t.values())
+    assert total == 11075
+    feet = audio.cue_table(audio.parse_sea(os.path.join(INSTALL, "audio", "xact", "FeetAll.SEA")))
+    assert len(feet) == 459
+    # the player's cement cues are the sneaker waves, pitched one octave down; grass is unpitched, three variations
+    assert {feet[f"WALK_CEM_PL_DRY{i}"]["wave"] for i in range(4)} == {"Sneaker Walk Cemnt_03", "Sneaker Walk Cemnt_04", "Sneaker Walk Cemnt_06", "Sneaker Walk Cemnt_08"}
+    assert feet["WALK_CEM_PL_DRY0"]["pitch_cents"] == -1200 and feet["WALK_GRASS0"]["pitch_cents"] == 0
+    assert [feet[f"WALK_GRASS{i}"]["wave"] for i in range(3)] == ["Shoe_Grass_03", "Shoe_Grass_04", "Shoe_Grass_06"]
