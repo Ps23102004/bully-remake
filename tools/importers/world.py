@@ -166,6 +166,7 @@ def build_world(install: str, out_dir: str, ipb_stems: list, entity_space: bool 
             "skinned_shapes": r.skinned_shapes, "bounds_game": r.bounds_game, "bin_bytes": r.bin_bytes,
             "winding_agree": r.winding_agree, "winding_checked": r.winding_checked,
             "missing_textures": r.missing_textures, "warnings": r.warnings[:20],
+            "sanitized_nonfinite": r.sanitized,
         }
         if (i + 1) % 100 == 0:
             log(f"  {i + 1}/{len(wanted)} models")
@@ -224,6 +225,7 @@ def build_world(install: str, out_dir: str, ipb_stems: list, entity_space: bool 
         "triangles": sum(m["triangles"] for m in models.values()),
         "textures_exported": len(textures),
         "texture_fallbacks": len(store.fallbacks),
+        "models_with_sanitized_nonfinite": sorted(k for k, m in models.items() if m["sanitized_nonfinite"]),
         "winding_agreement": (wa / wc) if wc else None,
         "failures_by_category": by_cat,
         "output_bytes": total_bytes,

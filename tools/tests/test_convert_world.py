@@ -134,3 +134,50 @@ def test_cli_requires_install(monkeypatch, tmp_path):
     assert cli.resolve_install(None) == root
     assert cli.main(["--out", str(tmp_path / "o"), "world", "--ipb", "town"]) == 0
     assert cli.main(["--out", str(tmp_path / "o"), "validate"]) == 0
+
+
+def test_nonfinite_uvs_are_zeroed_and_counted(tmp_path):
+    from fixtures import NifWriter
+    w = NifWriter()
+    w.add("NiNode", b"")
+    w.add("NiNode", b"")
+    w.add("NiTriShape", b"")
+    nan = float("nan")
+    w.add("NiTriShapeData", w.tri_shape_data([(0, 0, 0), (1, 0, 0), (0, 1, 0)], [(0, 1, 2)],
+                                             uvs=[[(0, 0), (nan, 1), (0, float("inf"))]]))
+    w.blocks[0] = ("NiNode", w.node(w.s("Scene Root"), [1]))
+    w.blocks[1] = ("NiNode", w.node(w.s("M"), [2]))
+    w.blocks[2] = ("NiTriShape", w.geometry(w.s("M:0"), 3))
+    root = _fake_install(str(tmp_path / "game"), {"M.nif": w.build()})
+    out = str(tmp_path / "out")
+    with ImgArchive(os.path.join(root, "Stream", "World.img")) as img:
+        r = convert_model("M", img.read("M.nif"), None, TextureStore(img, out), out)
+    assert r.sanitized == {"TEXCOORD_0": 2}
+    assert validate_gltf(os.path.join(out, r.gltf)) == []
+
+
+def test_alpha_flag_decoding_and_additive_material(tmp_path):
+    from tools.importers.convert import decode_alpha_flags
+    assert decode_alpha_flags(0x10EC)["blend"] is False and decode_alpha_flags(0x10EC)["test"] is False
+    d = decode_alpha_flags(0x32ED)
+    assert (d["blend"], d["src"], d["dst"], d["test"], d["test_func"], d["no_sort"]) == \
+        (True, "SRCALPHA", "INVSRCALPHA", True, "GREATER", True)
+    assert (decode_alpha_flags(0x1001)["src"], decode_alpha_flags(0x1001)["dst"]) == ("ONE", "ONE")
+    root = _fake_install(str(tmp_path / "game"), {"Glow.nif": make_quad_nif(model="Glow", alpha_flags=0x1001)})
+    out = str(tmp_path / "out")
+    with ImgArchive(os.path.join(root, "Stream", "World.img")) as img:
+        r = convert_model("Glow", img.read("Glow.nif"), "G_test", TextureStore(img, out), out)
+    mat = json.load(open(os.path.join(out, r.gltf)))["materials"][0]
+    assert mat["alphaMode"] == "BLEND" and mat["extras"]["blend_mode"] == "additive"
+
+
+def test_preview_renders_png(tmp_path):
+    pytest.importorskip("numpy")
+    from tools.importers.preview import render
+    from tools.importers.textures import read_png_header
+    root = _fake_install(str(tmp_path / "game"))
+    out = str(tmp_path / "out")
+    build_world(root, out, ["town"], log=lambda *_: None)
+    png = render(out, ["town"], size=200, log=lambda *_: None)
+    w, h, _ = read_png_header(png)
+    assert w > 0 and h > 0

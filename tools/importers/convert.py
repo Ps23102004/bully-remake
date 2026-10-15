@@ -20,6 +20,7 @@ parent applies to its children unless a child carries one of the same type.
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass, field
 
@@ -128,6 +129,7 @@ class ModelResult:
     missing_textures: list = field(default_factory=list)
     bounds_game: list | None = None
     empty_source: bool = False
+    sanitized: dict = field(default_factory=dict)  # attribute -> non-finite components zeroed
 
 
 def _effective_props(nif: NifFile, inherited: dict, refs) -> dict:
@@ -137,6 +139,23 @@ def _effective_props(nif: NifFile, inherited: dict, refs) -> dict:
         if b is not None and b.type_name in PROPERTY_TYPES and b.data is not None:
             props[b.type_name] = b.data
     return props
+
+
+BLEND_FUNCS = ("ONE", "ZERO", "SRCCOLOR", "INVSRCCOLOR", "DESTCOLOR", "INVDESTCOLOR", "SRCALPHA",
+               "INVSRCALPHA", "DESTALPHA", "INVDESTALPHA", "SRCALPHASAT")
+TEST_FUNCS = ("ALWAYS", "LESS", "EQUAL", "LESSEQUAL", "GREATER", "NOTEQUAL", "GREATEREQUAL", "NEVER")
+
+
+def decode_alpha_flags(f: int) -> dict:
+    """NiAlphaProperty flags (Gamebryo layout): bit 0 blend enable, bits 1-4
+    source factor, 5-8 destination factor, bit 9 test enable, 10-12 test
+    function, bit 13 no-sorter. Seen in the school: 0x10ec (opaque), 0x32ed
+    (blend + test GREATER), 0x1001 (blend ONE/ONE: additive glow decals)."""
+    def name(table, i):
+        return table[i] if i < len(table) else str(i)
+    return {"blend": bool(f & 1), "src": name(BLEND_FUNCS, (f >> 1) & 0xF),
+            "dst": name(BLEND_FUNCS, (f >> 5) & 0xF), "test": bool(f & 0x200),
+            "test_func": name(TEST_FUNCS, (f >> 10) & 7), "no_sort": bool(f & 0x2000)}
 
 
 def _wrap_modes(flags: int) -> tuple:
@@ -217,24 +236,53 @@ def _material_json(nif: NifFile, props: dict, store: TextureStore, txd: str | No
     pbr["baseColorFactor"] = ([1.0, 1.0, 1.0] if use_vertex_diffuse else [min(max(c, 0.0), 1.0) for c in diffuse]) + [opacity]
     if any(emissive):
         out["emissiveFactor"] = emissive
+    blend_mode = "opaque"
     if alpha:
         f = alpha["flags"]
         raw["alpha"] = {"flags": f, "threshold": alpha["threshold"]}
-        blend, test = bool(f & 1), bool(f & (1 << 9))
-        if test:
+        info = decode_alpha_flags(f)
+        raw["alpha"].update(info)
+        if info["blend"] and info["src"] == "ONE" and info["dst"] == "ONE":
+            # Additive (e.g. FloorGlowAdditive*, flags 0x1001). glTF has no
+            # additive mode: BLEND here, and extras.blend_mode tells the UE
+            # step to use an additive material.
+            blend_mode = "additive"
+            out["alphaMode"] = "BLEND"
+        elif info["test"]:
+            blend_mode = "masked"
             out["alphaMode"] = "MASK"
             out["alphaCutoff"] = alpha["threshold"] / 255.0
-        elif blend:
+        elif info["blend"]:
+            blend_mode = "translucent"
             out["alphaMode"] = "BLEND"
     elif opacity < 1.0:
+        blend_mode = "translucent"
         out["alphaMode"] = "BLEND"
     if stencil:
         raw["stencil_flags"] = stencil["flags"]
         if (stencil["flags"] >> 10) & 3 == 3:  # draw mode BOTH (bully-re: always 0x4d80)
             out["doubleSided"] = True
     out["name"] = name or "material"
-    out["extras"] = {"gamebryo": raw, "textures": textures_meta,
+    out["extras"] = {"gamebryo": raw, "textures": textures_meta, "blend_mode": blend_mode,
                      "vertex_color_mode": vertex_mode, "vertex_colors_drive_diffuse": use_vertex_diffuse}
+    return out
+
+
+def _finite(values, label: str, res: "ModelResult") -> list:
+    """Replace NaN/Inf components with 0.0. A few shipped models carry
+    non-finite UVs (e.g. ArtLrgChandlr, Aud_Chand03, SCH_CafeWorkTble: an
+    exporter fault in the source data). glTF forbids them, so they are zeroed
+    and the count is recorded per model."""
+    if all(map(math.isfinite, values)):
+        return values
+    out = list(values)
+    bad = 0
+    for i, x in enumerate(out):
+        if not math.isfinite(x):
+            out[i] = 0.0
+            bad += 1
+    if bad:
+        res.sanitized[label] = res.sanitized.get(label, 0) + bad
     return out
 
 
@@ -325,7 +373,8 @@ def convert_model(name: str, data, txd: str | None, store: TextureStore, out_dir
         tris = gd["triangles"]
         if max(tris) >= nv:
             raise FormatError(f"shape #{ref}: triangle index {max(tris)} >= {nv} vertices")
-        src_p, src_n = gd["vertices"], gd["normals"]
+        src_p = _finite(gd["vertices"], "POSITION", res)
+        src_n = _finite(gd["normals"], "NORMAL", res) if gd["normals"] else None
         agree, checked = _check_winding(src_p, src_n, tris)
         res.winding_agree += agree
         res.winding_checked += checked
@@ -351,9 +400,9 @@ def convert_model(name: str, data, txd: str | None, store: TextureStore, out_dir
         if nrm:
             attrs["NORMAL"] = gb.add_floats(nrm, "VEC3")
         for k, uv in enumerate(gd["uv_sets"]):
-            attrs[f"TEXCOORD_{k}"] = gb.add_floats(list(uv), "VEC2")
+            attrs[f"TEXCOORD_{k}"] = gb.add_floats(_finite(uv, f"TEXCOORD_{k}", res), "VEC2")
         if gd["colors"]:
-            cols = [min(max(c, 0.0), 1.0) for c in gd["colors"]]
+            cols = [min(max(c, 0.0), 1.0) for c in _finite(gd["colors"], "COLOR_0", res)]
             attrs["COLOR_0"] = gb.add_floats(cols, "VEC4")
         mjson = _material_json(nif, props, store, txd, name, gb, res, len(gd["uv_sets"]), bool(gd["colors"]))
         mkey = json.dumps(mjson, sort_keys=True)
