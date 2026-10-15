@@ -1,0 +1,57 @@
+{
+  "_format": "bully-remake.mission/1",
+  "_note": "Smoke test for the mission framework, built only from slice beats that need no combat/NPCs (opening-slice-recon A5-A7): cross the courtyard, use the main-building door (BullyDoorLink main_door_ext -> main_door_int), reach the lobby, go upstairs to the principal's office, then press E. Our own data; all coordinates UE cm (UE = 100x, -100y, 100z of the game metres in door_links.json / the recon). Run: Mission.Start smoke_day_one, or -BRMission=smoke_day_one, or the headless driver -BRMissionSmoke.",
+  "id": "smoke_day_one",
+  "title": "Day One (smoke)",
+  "retry": "stage",
+  "fail_delay": 1.5,
+  "trigger_file": "imported/triggers/day_one.json",
+
+  "points": {
+    "courtyard_approach": { "location_cm": [21470, 7330, 1000] },
+    "lobby":              { "location_cm": [-62860, 31070, 0] },
+    "office_approach":    { "location_cm": [-63300, 29300, 550] }
+  },
+
+  "triggers": [
+    { "id": "main_door",     "center_cm": [21070, 7330, 1000],   "half_extent_cm": [60, 160, 250] },
+    { "id": "secretary_desk", "center_cm": [-63270, 28670, 686], "half_extent_cm": [220, 220, 200], "interact": true, "prompt": "Announce yourself" }
+  ],
+
+  "stages": [
+    {
+      "id": "cross_courtyard",
+      "objective": "Cross the courtyard to the main building.",
+      "blip": "main_door",
+      "complete": { "type": "reach_location", "point": "courtyard_approach", "radius_cm": 450 },
+      "on_start": [ { "type": "hint", "text": "Walk toward the marker. Run with the movement keys, hold Shift to sprint.", "seconds": 6 } ]
+    },
+    {
+      "id": "use_door",
+      "objective": "Go through the main door.",
+      "complete": { "type": "trigger_enter", "trigger": "main_door" },
+      "on_complete": [ { "type": "event", "name": "entered_school" } ]
+    },
+    {
+      "id": "reach_lobby",
+      "objective": "Walk into the entrance hall.",
+      "complete": { "type": "reach_location", "point": "lobby", "radius_cm": 450, "z_tolerance_cm": 300 }
+    },
+    {
+      "id": "go_upstairs",
+      "objective": "Head upstairs to the principal's office.",
+      "complete": { "type": "reach_location", "point": "office_approach", "radius_cm": 600, "z_tolerance_cm": 250 },
+      "fail": { "type": "event", "name": "smoke_fail" },
+      "checkpoint": { "point": "lobby", "yaw": -90 },
+      "on_start": [ { "type": "log", "text": "stage 4 has a fail condition (event smoke_fail): Mission.Fire smoke_fail reloads this stage at the lobby checkpoint" } ]
+    },
+    {
+      "id": "announce",
+      "objective": "Let the secretary know you have arrived.",
+      "complete": { "type": "interact", "trigger": "secretary_desk" },
+      "on_complete": [ { "type": "hint", "text": "Day One smoke mission complete.", "seconds": 4 } ]
+    }
+  ],
+
+  "on_complete": [ { "type": "log", "text": "smoke_day_one finished" } ]
+}
