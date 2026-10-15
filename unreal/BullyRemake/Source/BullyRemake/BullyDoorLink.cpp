@@ -8,13 +8,15 @@
 #include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
-#include "TimerManager.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogBullyDoor, Log, All);
 
 ABullyDoorLink::ABullyDoorLink()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;   // enabled only while a transition runs
 	Trigger = CreateDefaultSubobject<UBoxComponent>(TEXT("Trigger"));
 	SetRootComponent(Trigger);
 	Trigger->SetBoxExtent(FVector(40.f, 100.f, 150.f));
@@ -71,7 +73,7 @@ void ABullyDoorLink::OnTriggerBegin(UPrimitiveComponent*, AActor* OtherActor, UP
 bool ABullyDoorLink::UseDoor(ABullyCharacter* Pawn)
 {
 	UWorld* World = GetWorld();
-	if (!Pawn || !World || Pawn->bDoorBusy || World->GetTimeSeconds() - Pawn->LastDoorUseTime < CooldownSeconds)
+	if (!Pawn || !World || Pawn->bDoorBusy || State != ETransition::Idle || World->GetTimeSeconds() - Pawn->LastDoorUseTime < CooldownSeconds)
 	{
 		return false;
 	}
@@ -82,29 +84,135 @@ bool ABullyDoorLink::UseDoor(ABullyCharacter* Pawn)
 		return false;
 	}
 	Pawn->bDoorBusy = true;
-	APlayerController* PC = Cast<APlayerController>(Pawn->GetController());
-	if (PC)
+	if (APlayerController* PC = Cast<APlayerController>(Pawn->GetController()))
 	{
 		PC->SetIgnoreMoveInput(true);
-		if (PC->PlayerCameraManager)
-		{
-			PC->PlayerCameraManager->StartCameraFade(0.f, 1.f, FadeSeconds, FLinearColor::Black, /*bFadeAudio*/ false, /*bHoldWhenFinished*/ true);
-		}
 	}
-	UE_LOG(LogBullyDoor, Display, TEXT("BR_DOOR use '%s' (%s) at %s -> '%s' (fade %.2fs)"),
-		*LinkId.ToString(), *Label, *Pawn->GetActorLocation().ToString(), *Dest->LinkId.ToString(), FadeSeconds);
-	FTimerDelegate D = FTimerDelegate::CreateUObject(this, &ABullyDoorLink::CompleteTransition, Pawn, Dest);
-	World->GetTimerManager().SetTimer(FadeTimer, D, FMath::Max(FadeSeconds, 0.02f), false);
+	Traveler = Pawn;
+	Destination = Dest;
+	State = ETransition::FadeOut;
+	StateTime = 0.f;
+	BlackFrames = 0;
+	bTeleported = false;
+	SetActorTickEnabled(true);
+	UE_LOG(LogBullyDoor, Display, TEXT("BR_DOOR use '%s' (%s) at %s -> '%s' (fade %.2fs, settle %.2fs/%d frames) state=FadeOut t=%.3f"),
+		*LinkId.ToString(), *Label, *Pawn->GetActorLocation().ToString(), *Dest->LinkId.ToString(), FadeSeconds, SettleSeconds, SettleFrames, World->GetTimeSeconds());
 	return true;
 }
 
-void ABullyDoorLink::CompleteTransition(ABullyCharacter* Pawn, ABullyDoorLink* Dest)
+namespace
 {
-	UWorld* World = GetWorld();
-	if (!Pawn || !Dest || !World)
+	float Smooth01(float X)
 	{
+		X = FMath::Clamp(X, 0.f, 1.f);
+		return X * X * (3.f - 2.f * X);
+	}
+}
+
+void ABullyDoorLink::SetFade(ABullyCharacter* Pawn, float Alpha)
+{
+	static const bool bTrace = FParse::Param(FCommandLine::Get(), TEXT("BRDoorTrace"));
+	if (bTrace)
+	{
+		// one line per frame while a transition runs (evidence: monotone ramp to 1.0, black hold, monotone ramp back, no pop)
+		UE_LOG(LogBullyDoor, Display, TEXT("BR_DOOR_TRACE frame=%llu t=%.3f state=%d alpha=%.3f pawn=%s"), GFrameCounter,
+			GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0, int32(State), Alpha, *Pawn->GetActorLocation().ToString());
+	}
+	if (APlayerController* PC = Cast<APlayerController>(Pawn->GetController()))
+	{
+		if (PC->PlayerCameraManager)
+		{
+			if (Alpha <= 0.f)
+			{
+				PC->PlayerCameraManager->StopCameraFade();
+			}
+			else
+			{
+				PC->PlayerCameraManager->SetManualCameraFade(FMath::Min(Alpha, 1.f), FLinearColor::Black, /*bFadeAudio*/ false);
+			}
+		}
+	}
+}
+
+void ABullyDoorLink::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	ABullyCharacter* Pawn = Traveler.Get();
+	ABullyDoorLink* Dest = Destination.Get();
+	UWorld* World = GetWorld();
+	if (State == ETransition::Idle || !World)
+	{
+		SetActorTickEnabled(false);
 		return;
 	}
+	if (!Pawn || !Dest)
+	{
+		State = ETransition::Idle;   // traveller destroyed mid-transition
+		SetActorTickEnabled(false);
+		return;
+	}
+	const float F = FMath::Max(FadeSeconds, 0.02f);
+	StateTime += DeltaSeconds;
+	switch (State)
+	{
+	case ETransition::FadeOut:
+	{
+		const float A = Smooth01(StateTime / F);
+		SetFade(Pawn, A);
+		if (StateTime >= F)
+		{
+			State = ETransition::Black;
+			StateTime = 0.f;
+			BlackFrames = 0;
+			UE_LOG(LogBullyDoor, Display, TEXT("BR_DOOR '%s' state=Black (alpha 1.0 reached) t=%.3f"), *LinkId.ToString(), World->GetTimeSeconds());
+		}
+		break;
+	}
+	case ETransition::Black:
+	{
+		SetFade(Pawn, 1.f);
+		++BlackFrames;
+		if (!bTeleported)
+		{
+			// the camera has applied alpha 1.0 for one full frame before anything moves
+			if (BlackFrames >= 2)
+			{
+				DoTeleport(Pawn, Dest);
+				bTeleported = true;
+				StateTime = 0.f;
+				BlackFrames = 0;
+			}
+		}
+		else if (StateTime >= SettleSeconds && BlackFrames >= SettleFrames)
+		{
+			State = ETransition::FadeIn;
+			StateTime = 0.f;
+			UE_LOG(LogBullyDoor, Display, TEXT("BR_DOOR '%s' state=FadeIn after %.2fs / %d black frames settled t=%.3f"), *LinkId.ToString(), SettleSeconds, SettleFrames, World->GetTimeSeconds());
+		}
+		break;
+	}
+	case ETransition::FadeIn:
+	{
+		const float A = 1.f - Smooth01(StateTime / F);
+		SetFade(Pawn, A);
+		if (StateTime >= F)
+		{
+			SetFade(Pawn, 0.f);
+			FinishTransition(Pawn);
+			State = ETransition::Idle;
+			SetActorTickEnabled(false);
+			UE_LOG(LogBullyDoor, Display, TEXT("BR_DOOR '%s' state=Idle (transition complete) t=%.3f"), *LinkId.ToString(), World->GetTimeSeconds());
+		}
+		break;
+	}
+	default:
+		break;
+	}
+}
+
+void ABullyDoorLink::DoTeleport(ABullyCharacter* Pawn, ABullyDoorLink* Dest)
+{
+	UWorld* World = GetWorld();
 	// Snap the exit onto the floor: short complex trace around the authored height, else keep it.
 	FVector Loc = Dest->ExitLocation;
 	const float HalfHeight = Pawn->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
@@ -129,23 +237,18 @@ void ABullyDoorLink::CompleteTransition(ABullyCharacter* Pawn, ABullyDoorLink* D
 		{
 			if (PC->PlayerCameraManager)
 			{
-				PC->PlayerCameraManager->StartCameraFade(1.f, 0.f, FadeSeconds, FLinearColor::Black, false, false);
+				PC->PlayerCameraManager->SetGameCameraCutThisFrame();   // no temporal history / motion blur across the teleport
 			}
 		}
 	}
+	Pawn->SnapCamera();   // drop the spring arm's location lag so the camera does not swoop from the old door
 	Pawn->LastDoorUseTime = World->GetTimeSeconds();
 	Pawn->DoorUseCount++;
-	UE_LOG(LogBullyDoor, Display, TEXT("BR_DOOR arrived via '%s' at %s yaw %.0f (use #%d)"), *Dest->LinkId.ToString(), *Pawn->GetActorLocation().ToString(), Dest->ExitYaw, Pawn->DoorUseCount);
-	FTimerDelegate D = FTimerDelegate::CreateUObject(this, &ABullyDoorLink::FinishTransition, Pawn);
-	World->GetTimerManager().SetTimer(FadeTimer, D, FMath::Max(FadeSeconds, 0.02f), false);
+	UE_LOG(LogBullyDoor, Display, TEXT("BR_DOOR teleported via '%s' to %s yaw %.0f (use #%d) t=%.3f"), *Dest->LinkId.ToString(), *Pawn->GetActorLocation().ToString(), Dest->ExitYaw, Pawn->DoorUseCount, World->GetTimeSeconds());
 }
 
 void ABullyDoorLink::FinishTransition(ABullyCharacter* Pawn)
 {
-	if (!Pawn)
-	{
-		return;
-	}
 	if (APlayerController* PC = Cast<APlayerController>(Pawn->GetController()))
 	{
 		PC->SetIgnoreMoveInput(false);

@@ -111,6 +111,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Bully") void SetRunning(bool bRun) { SetScriptedGait(bRun ? EBullyGait::Run : EBullyGait::Walk); }
 	float GetHorizontalSpeed() const;
 	bool HasJimmyMesh() const { return bHasJimmyMesh; }
+	/** Drops the camera boom's location lag for two frames (door teleports: no swoop from the old position). */
+	void SnapCamera();
 	/** Called by scripts/input when the camera was steered explicitly (suspends auto-follow for CameraFollowDelay). */
 	void NoteLookInput() { LastLookInputTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0; }
 
@@ -174,6 +176,7 @@ private:
 	double LastMoveInputTime = -100.0;
 	double LastLookInputTime = -100.0;
 	bool bHasJimmyMesh = false;
+	int32 LagRestoreFrames = 0;      // >0: boom lag is off for this many more ticks (SnapCamera)
 
 	// foot-slide diagnostic: horizontal world speed of a planted foot (should be ~0)
 	FVector PrevFoot[2] = { FVector::ZeroVector, FVector::ZeroVector };

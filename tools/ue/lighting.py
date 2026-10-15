@@ -213,7 +213,24 @@ def apply_interior_materials(eas, icfg, misses):
         MEL.set_material_instance_scalar_parameter_value(m, "SpecularBase", float(f["specular"]))
         MEL.update_material_instance(m)
         EAL.save_loaded_asset(m, only_if_is_dirty=False)
-    res = {"window_mis": len(seen), "floor_mis": len(floor_mis), "night_windows_hidden": hidden}
+    # Exterior backdrop cards seen through the entrance doorway from inside (polish1): the original's own trick, a big
+    # model of the school front painted on screens (SC_*Screen textures) parked outside the interior pocket. It was
+    # lit only by the dim interior key, so it read as a flat grey plane next to the sunlit exterior. Emissive =
+    # albedo * gain makes it self-lit at roughly the exterior's brightness (value is an estimate, tune by eye).
+    bcfg = icfg.get("backdrop_glow")
+    bd = {}
+    if bcfg:
+        for a in _mesh_actors(eas):
+            if _model_of(a) not in bcfg["models"]:
+                continue
+            for m in a.static_mesh_component.get_materials():
+                if m is not None and isinstance(m, unreal.MaterialInstanceConstant):
+                    bd[m.get_path_name()] = m
+        for m in bd.values():
+            if _emissive_from_base(m, bcfg["gain"]):
+                MEL.update_material_instance(m)
+                EAL.save_loaded_asset(m, only_if_is_dirty=False)
+    res = {"window_mis": len(seen), "floor_mis": len(floor_mis), "night_windows_hidden": hidden, "backdrop_mis": len(bd)}
     _log("interior materials: %s" % json.dumps(res))
     return res
 
