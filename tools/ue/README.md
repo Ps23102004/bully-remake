@@ -322,3 +322,21 @@ render differed by 0.2 to 0.9 / 255 mean absolute (foliage noise only). `run_sho
 - **Shot hides** (`shot_hides`): actors set hidden-in-game for the hero shots (see MEASUREMENTS.md in the round-2 evidence).
 - Birds: `build_birds` exists but is disabled (count 0); lit flat cubes read as debris.
 - Cameras (`shots_m5.json`): gates x 33200, eye 5.6 m, FOV 57; facade from x 28800, FOV 68, pitch ~12 deg; path panned and tilted up, FOV 66; lobby from the far wall, FOV 72.
+
+## Milestone 6: proof capture (`walk_m6_proof.json`, `place_doors.py`, `run_place_doors.sh`)
+<!-- OWNER: builder-B6 (proof) -->
+
+    tools/ue/run_walk.sh --script tools/ue/walk_m6_proof.json --out ~/bully-remake-evidence/m6 --res 1920x1080 --label bully-proof
+    # -> 00_first_frame_4k.png (3840x2160 opening vantage), sequence.mp4 (30 fps fixed step, 90.0 s, 2700 frames)
+
+One continuous recording of real gameplay: street outside the gates, walk to the arch, run through the gates and
+courtyard with one running jump, walk the central path, run to the building, walk up the steps, door, entrance-hall
+loop, door back out, run across the courtyard. All movement is `walk_to`/`action_shot` with `"cam": "follow"` (the
+character's own camera); ambient walkers stay on. The route as landmarks and timings (for driving the same route in the
+original game) is `docs/re-notes/proof-route.md`.
+
+Preconditions the run needs, both silently missing in a bad checkout: `/Game/Imported/Characters/Jimmy/SK_Jimmy` (else
+the pawn is the M2 placeholder body: `BR_CHAR Jimmy mesh MISSING` in the log; fix `run_import_character.sh`) and the
+two `ABullyDoorLink` actors in the saved map (else `wait_door TIMEOUT`; fix `tools/ue/run_place_doors.sh`, which
+re-places `door_links.json` into the saved map in ~15 s, no re-import). A level rebuild while the editor module is not
+built saves a map without doors (`door links skipped` warning in `import_*.log`).

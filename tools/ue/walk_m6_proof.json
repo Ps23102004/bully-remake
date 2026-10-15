@@ -1,0 +1,239 @@
+{
+ "_owner": "builder-B6 (proof capture)",
+ "_note": "Phase 0 milestone-6 PROOF capture (our-build half of the side-by-side). One continuous 30 fps fixed-step recording of REAL gameplay (BullyCharacter + follow camera, ambient walkers active, real door links): start on the street outside the gates, walk through the arch, run across the courtyard with one running jump, walk the central path, run to the building front, door, entrance hall loop, door back out, run across the courtyard. A 3840x2160 first-frame still is taken before recording. Route doc: docs/re-notes/proof-route.md. Fixed-timestep capture is NOT real-time performance evidence.",
+ "warmup_seconds": 15,
+ "settle_seconds": 3,
+ "max_compile_wait_seconds": 1800,
+ "highres_size": [
+  3840,
+  2160
+ ],
+ "exec": [
+  "r.MotionBlurQuality 0",
+  "t.MaxFPS 30",
+  "r.HighResScreenshotDelay 8"
+ ],
+ "steps": [
+  {
+   "do": "log",
+   "name": "spawn"
+  },
+  {
+   "do": "face",
+   "yaw": 180,
+   "pitch": -8
+  },
+  {
+   "do": "wait",
+   "seconds": 2
+  },
+  {
+   "do": "shot",
+   "name": "first_frame_4k"
+  },
+  {
+   "do": "record_start",
+   "fps": 30
+  },
+  {
+   "do": "log",
+   "name": "P01_start_street_idle"
+  },
+  {
+   "do": "wait",
+   "seconds": 4
+  },
+  {
+   "do": "walk_to",
+   "name": "P02_walk_to_gate_arch",
+   "x": 30300,
+   "y": 7300,
+   "gait": "walk",
+   "cam": "follow",
+   "timeout": 25,
+   "radius": 40,
+   "stop_on_door": false
+  },
+  {
+   "do": "log",
+   "name": "P03_gate_idle"
+  },
+  {
+   "do": "wait",
+   "seconds": 3
+  },
+  {
+   "do": "walk_to",
+   "name": "P04_run_through_gates_to_courtyard",
+   "x": 27600,
+   "y": 7300,
+   "gait": "run",
+   "cam": "follow",
+   "timeout": 40,
+   "radius": 60,
+   "stop_on_door": false
+  },
+  {
+   "do": "action_shot",
+   "name": "P05_run_jump",
+   "x": 26200,
+   "y": 7316,
+   "gait": "run",
+   "cam": "follow",
+   "jump": true,
+   "jump_at": 0.8,
+   "trigger": "none_land",
+   "after": 0.6
+  },
+  {
+   "do": "walk_to",
+   "name": "P06_walk_the_central_path",
+   "x": 24300,
+   "y": 7330,
+   "gait": "walk",
+   "cam": "follow",
+   "timeout": 30,
+   "radius": 60,
+   "stop_on_door": false
+  },
+  {
+   "do": "walk_to",
+   "name": "P07_run_to_building_front",
+   "x": 22300,
+   "y": 7330,
+   "gait": "run",
+   "cam": "follow",
+   "timeout": 30,
+   "radius": 60,
+   "stop_on_door": false
+  },
+  {
+   "do": "log",
+   "name": "P08_to_main_door"
+  },
+  {
+   "do": "walk_to",
+   "name": "P08_walk_to_main_door",
+   "x": 21070,
+   "y": 7330,
+   "gait": "walk",
+   "cam": "follow",
+   "timeout": 30,
+   "radius": 20,
+   "stop_on_door": true
+  },
+  {
+   "do": "wait_door",
+   "timeout": 4
+  },
+  {
+   "do": "log",
+   "name": "P09_entered_lobby"
+  },
+  {
+   "do": "wait",
+   "seconds": 1.0
+  },
+  {
+   "do": "walk_to",
+   "name": "P10_walk_into_lobby",
+   "x": -62860,
+   "y": 31400,
+   "gait": "walk",
+   "cam": "follow",
+   "timeout": 20,
+   "radius": 60,
+   "stop_on_door": false
+  },
+  {
+   "do": "log",
+   "name": "P11_lobby_idle"
+  },
+  {
+   "do": "wait",
+   "seconds": 3
+  },
+  {
+   "do": "walk_to",
+   "name": "P12_lobby_west_side",
+   "x": -63500,
+   "y": 30900,
+   "gait": "walk",
+   "cam": "follow",
+   "timeout": 20,
+   "radius": 60,
+   "stop_on_door": false
+  },
+  {
+   "do": "walk_to",
+   "name": "P13_lobby_east_side",
+   "x": -62300,
+   "y": 30900,
+   "gait": "walk",
+   "cam": "follow",
+   "timeout": 20,
+   "radius": 60,
+   "stop_on_door": false
+  },
+  {
+   "do": "log",
+   "name": "P14_run_to_exit_door"
+  },
+  {
+   "do": "walk_to",
+   "name": "P14_run_back_to_door",
+   "x": -62860,
+   "y": 32950,
+   "gait": "run",
+   "cam": "follow",
+   "timeout": 30,
+   "radius": 20,
+   "stop_on_door": true
+  },
+  {
+   "do": "wait_door",
+   "timeout": 4
+  },
+  {
+   "do": "log",
+   "name": "P15_back_outside"
+  },
+  {
+   "do": "wait",
+   "seconds": 1.0
+  },
+  {
+   "do": "walk_to",
+   "name": "P16_walk_out_of_doorway",
+   "x": 22000,
+   "y": 7330,
+   "gait": "walk",
+   "cam": "follow",
+   "timeout": 20,
+   "radius": 60,
+   "stop_on_door": false
+  },
+  {
+   "do": "walk_to",
+   "name": "P17_run_across_courtyard",
+   "x": 25500,
+   "y": 7150,
+   "gait": "run",
+   "cam": "follow",
+   "timeout": 30,
+   "radius": 60,
+   "stop_on_door": false
+  },
+  {
+   "do": "wait",
+   "seconds": 2
+  },
+  {
+   "do": "record_stop"
+  },
+  {
+   "do": "log",
+   "name": "end"
+  }
+ ]
+}
