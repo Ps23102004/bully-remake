@@ -1,7 +1,7 @@
 // OWNER: builder-B2 (doors)
 #include "BullyDoorLink.h"
 
-#include "BullyPawn.h"
+#include "BullyCharacter.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -59,7 +59,7 @@ ABullyDoorLink* ABullyDoorLink::GetPartner()
 
 void ABullyDoorLink::OnTriggerBegin(UPrimitiveComponent*, AActor* OtherActor, UPrimitiveComponent*, int32, bool, const FHitResult&)
 {
-	if (ABullyPawn* Pawn = Cast<ABullyPawn>(OtherActor))
+	if (ABullyCharacter* Pawn = Cast<ABullyCharacter>(OtherActor))
 	{
 		if (Pawn->IsPlayerControlled())
 		{
@@ -68,7 +68,7 @@ void ABullyDoorLink::OnTriggerBegin(UPrimitiveComponent*, AActor* OtherActor, UP
 	}
 }
 
-bool ABullyDoorLink::UseDoor(ABullyPawn* Pawn)
+bool ABullyDoorLink::UseDoor(ABullyCharacter* Pawn)
 {
 	UWorld* World = GetWorld();
 	if (!Pawn || !World || Pawn->bDoorBusy || World->GetTimeSeconds() - Pawn->LastDoorUseTime < CooldownSeconds)
@@ -98,7 +98,7 @@ bool ABullyDoorLink::UseDoor(ABullyPawn* Pawn)
 	return true;
 }
 
-void ABullyDoorLink::CompleteTransition(ABullyPawn* Pawn, ABullyDoorLink* Dest)
+void ABullyDoorLink::CompleteTransition(ABullyCharacter* Pawn, ABullyDoorLink* Dest)
 {
 	UWorld* World = GetWorld();
 	if (!Pawn || !Dest || !World)
@@ -140,7 +140,7 @@ void ABullyDoorLink::CompleteTransition(ABullyPawn* Pawn, ABullyDoorLink* Dest)
 	World->GetTimerManager().SetTimer(FadeTimer, D, FMath::Max(FadeSeconds, 0.02f), false);
 }
 
-void ABullyDoorLink::FinishTransition(ABullyPawn* Pawn)
+void ABullyDoorLink::FinishTransition(ABullyCharacter* Pawn)
 {
 	if (!Pawn)
 	{

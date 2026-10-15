@@ -1,4 +1,4 @@
-// OWNER: builder-B2 (doors)
+// OWNER: builder-B2 (doors); M3 steps (gaits, action shots, frame recording) builder-B3 (jimmy)
 // Scripted gameplay evidence run: drives the REAL pawn (real collision, real door triggers) along a JSON
 // script and captures offscreen PNGs. Inactive unless -BRWalkFile= is on the command line.
 #pragma once
@@ -8,7 +8,7 @@
 #include "Tickable.h"
 #include "BullyWalkRunner.generated.h"
 
-class ABullyPawn;
+class ABullyCharacter;
 
 struct FBullyWalkStep
 {
@@ -22,6 +22,16 @@ struct FBullyWalkStep
 	bool bRun = true;
 	bool bHasZ = false;
 	bool bStopOnDoor = true;           // walk_to: also ends when a door transition happened
+	// --- milestone 3 (Jimmy) ---
+	FString Gait;                      // walk | run | sprint (overrides "run")
+	FString Cam = TEXT("lock");        // lock: camera pitched -12 behind the walk direction (M2); follow: the character's own follow camera
+	bool bHasPos = false;              // action_shot: run toward Pos (else along Yaw)
+	bool bJump = false;                // action_shot: jump at JumpAt s
+	float JumpAt = 0.f;
+	FString Trigger = TEXT("time");    // action_shot: time | apex | air (TriggerTime s after take-off) | land | none | none_land (no shot)
+	float TriggerTime = 1.f;
+	float After = 1.f;                 // action_shot: keep moving this long after the shot
+	float Fps = 30.f;                  // record_start
 };
 
 /**
@@ -32,6 +42,11 @@ struct FBullyWalkStep
  *                {"do":"wait_door","timeout":4}, {"do":"face","yaw":180,"pitch":-8},
  *                {"do":"teleport","x":..,"y":..,"z":..,"yaw":..}, {"do":"trace_ground","x":..,"y":..} ] }
  * Output: <dir>/NN_<name>.png and <dir>/walk_result.json (positions, stuck/timeouts, door counts).
+ * Milestone 3 steps: walk_to accepts "gait" (walk|run|sprint) and "cam" ("follow" leaves the camera to the character);
+ *   {"do":"action_shot","name":..,"x":..,"y":.. | "yaw":..,"gait":"run","jump":true,"jump_at":0.6,
+ *    "trigger":"time|apex|air|land","trigger_time":..,"after":1.0} moves the character, pauses the game at the trigger,
+ *    takes a settled high-res shot of the frozen moment, unpauses and keeps moving;
+ *   {"do":"record_start","fps":30} / {"do":"record_stop"}: fixed time step + one viewport PNG per frame into <dir>/frames/.
  */
 UCLASS()
 class UBullyWalkRunner : public UGameInstanceSubsystem, public FTickableGameObject
@@ -46,14 +61,17 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	virtual TStatId GetStatId() const override;
 	virtual bool IsTickable() const override { return bActive; }
+	virtual bool IsTickableWhenPaused() const override { return true; }
 	virtual ETickableTickType GetTickableTickType() const override { return ETickableTickType::Conditional; }
 
 private:
 	bool LoadScript(const FString& Path);
-	void BeginStep(UWorld* World, ABullyPawn* Pawn, FBullyWalkStep& S);
-	bool TickStep(UWorld* World, ABullyPawn* Pawn, FBullyWalkStep& S, float Dt);
+	void BeginStep(UWorld* World, ABullyCharacter* Pawn, FBullyWalkStep& S);
+	bool TickStep(UWorld* World, ABullyCharacter* Pawn, FBullyWalkStep& S, float Dt);
 	void Note(const FString& Line);
 	void WriteResult() const;
+	void RequestShot(ABullyCharacter* Pawn, const FString& Name, bool bHighRes);
+	FString PawnState(ABullyCharacter* Pawn) const;
 
 	bool bActive = false;
 	bool bExecDone = false;
@@ -80,4 +98,13 @@ private:
 	TArray<FBullyWalkStep> Steps;
 	TArray<FString> Log;
 	int32 Failures = 0;
+	// action_shot
+	int32 ActionPhase = 0;            // 0 moving, 1 paused/settling, 2 shot taken, 3 after
+	double ActionMark = 0.0;
+	int32 JumpCountAtStart = 0;
+	bool bJumpIssued = false;
+	// record
+	bool bRecording = false;
+	int32 RecordFrame = 0;
+	FString RecordDir;
 };
