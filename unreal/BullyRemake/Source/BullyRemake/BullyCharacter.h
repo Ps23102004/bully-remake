@@ -97,12 +97,33 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Camera") float CameraFollowPitchRate = 30.f;
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Camera") float CameraMinPitch = -60.f;
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Camera") float CameraMaxPitch = 30.f;
+	/**
+	 * Look feel. Degrees of camera turn per raw mouse count = LookBaseDegPerCount * LookSensitivity * LookSensitivityX (yaw) /
+	 * LookSensitivityY (pitch). Raw Mouse2D was previously applied 1:1 (1 deg per count = far too twitchy); at the defaults
+	 * (0.30 * 1.0 * 0.6 = 0.18 deg/count horizontal, 0.15 vertical) a ~500-count comfortable flick turns ~90 deg.
+	 * LookSensitivity is the master multiplier; X/Y are the two sliders in the Esc menu (range 0.05..1.0).
+	 * Persisted by the menu to the user config layer (Saved/Config/<platform>/Game.ini, [/Script/BullyRemake.BullyCharacter]),
+	 * which overrides Config/DefaultGame.ini on the next launch.
+	 */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Camera") float LookSensitivity = 1.0f;
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Camera") float LookSensitivityX = 0.6f;
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Camera") float LookSensitivityY = 0.5f;
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Camera") bool bInvertLookY = false;
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Camera") float LookBaseDegPerCount = 0.30f;
+	/** Gamepad right stick: deg/s at full deflection with the default X/Y sensitivity (scaled by X/Y relative to the defaults). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Camera") float GamepadLookYawRate = 150.f;
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Camera") float GamepadLookPitchRate = 100.f;
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Camera") bool bSnapToGroundOnBeginPlay = true;
 
 	// --- runtime API ---------------------------------------------------------------------------------------
 	/** Re-applies every Config value to the components (also called from BeginPlay). */
 	UFUNCTION(BlueprintCallable, Category = "Bully") void ApplyTuning();
+	/** Live look settings (menu sliders): clamps to the slider range, applies to this pawn and to the class defaults. */
+	UFUNCTION(BlueprintCallable, Category = "Bully") void SetLookSettings(float NewX, float NewY, bool bNewInvertY);
+	/** Writes X/Y/invert to the user config layer ([/Script/BullyRemake.BullyCharacter] in GGameIni) so they survive a relaunch. */
+	UFUNCTION(BlueprintCallable, Category = "Bully") void SaveLookSettings() const;
+	static constexpr float MinLookSens = 0.05f;
+	static constexpr float MaxLookSens = 1.0f;
 	/** Scripted control (walk runner, cutscenes): forces a gait regardless of buttons; ClearScriptedGait releases. */
 	UFUNCTION(BlueprintCallable, Category = "Bully") void SetScriptedGait(EBullyGait Gait);
 	UFUNCTION(BlueprintCallable, Category = "Bully") void ClearScriptedGait() { bHasScriptedGait = false; }
@@ -145,6 +166,7 @@ private:
 	void OnMove(const FInputActionValue& Value);
 	void OnMoveCompleted(const FInputActionValue& Value) { MoveIntent = 0.f; }
 	void OnLook(const FInputActionValue& Value);
+	void OnLookPad(const FInputActionValue& Value);
 	void OnSprint(const FInputActionValue& Value) { bSprintHeld = true; }
 	void OnSprintEnd(const FInputActionValue& Value) { bSprintHeld = false; }
 	void OnWalk(const FInputActionValue& Value) { bWalkHeld = true; }
@@ -163,6 +185,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UInputMappingContext> MappingContext;
 	UPROPERTY(Transient) TObjectPtr<UInputAction> MoveAction;
 	UPROPERTY(Transient) TObjectPtr<UInputAction> LookAction;
+	UPROPERTY(Transient) TObjectPtr<UInputAction> LookPadAction;
 	UPROPERTY(Transient) TObjectPtr<UInputAction> JumpAction;
 	UPROPERTY(Transient) TObjectPtr<UInputAction> SprintAction;
 	UPROPERTY(Transient) TObjectPtr<UInputAction> WalkAction;

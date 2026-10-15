@@ -17,5 +17,8 @@ public class BullyRemake : ModuleRules
 
 		// BullyShotRunner: JSON shot lists for offscreen evidence captures.
 		PrivateDependencyModuleNames.AddRange(new string[] { "Json" });
+
+		// BullyPlayerController: the Esc settings menu is a pure-C++ Slate overlay (no editor-authored UMG asset).
+		PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
 	}
 }
