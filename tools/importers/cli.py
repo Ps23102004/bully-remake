@@ -96,6 +96,75 @@ def cmd_nif(a) -> int:
     return rc
 
 
+def cmd_ped(a) -> int:
+    from .convert import TextureStore
+    from .ide import ModelDefs
+    from .ped import PLAYER_LOCOMOTION, clip_requests, export_ped
+    install = resolve_install(a.install)
+    with _archive(install, "Stream/World.img") as img:
+        defs = ModelDefs.load_install(install)
+        e = img.find(a.name + ".nif")
+        if e is None:
+            print(f"{a.name}: not in World.img", file=sys.stderr)
+            return 1
+        ide = defs.get(e.stem)
+        txd = a.txd or (ide.txd if ide else None)
+        store = None if a.no_textures else TextureStore(img, a.out)
+        names = a.anims if a.anims else (PLAYER_LOCOMOTION if a.group.lower() == "c_player" else [])
+        if a.no_anims:
+            names = []
+        try:
+            reqs = clip_requests(install, img, a.group, names) if names else []
+            r = export_ped(e.stem, img.read_entry(e), txd, store, a.out, reqs, root_motion=a.root_motion)
+        except FormatError as ex:
+            print(f"{a.name}: FAILED {ex}", file=sys.stderr)
+            return 1
+    problems = validate_gltf(os.path.join(a.out, r.gltf), check_images=store is not None)
+    out = {"model": r.name, "gltf": r.gltf, "joints": r.joints, "skins": r.skins, "shapes": r.shapes,
+           "vertices": r.vertices, "triangles": r.triangles, "max_influences": r.max_influences,
+           "unweighted_vertices": r.unweighted_vertices,
+           "weight_sum_max_error": round(r.weight_sum_max_error, 6),
+           "bind_vs_stored_max_mm": round(r.bind_vs_stored_max_m * 1000, 3),
+           "ibm_vs_file_pose_max": round(r.bind_vs_file_pose_max, 6),
+           "skipped_shapes": r.skipped_shapes, "missing_textures": r.missing_textures,
+           "animations": [{k: c[k] for k in ("name", "duration", "key_type", "tracks", "root_motion",
+                                              "loops", "start_end_max_deg")} for c in r.clips],
+           "warnings": r.warnings[:10], "validation_problems": problems}
+    print(json.dumps(out, indent=1))
+    if a.sheet:
+        from .skinpreview import contact_sheet
+        for view in a.sheet_views:
+            stem, ext = os.path.splitext(a.sheet)
+            contact_sheet(os.path.join(a.out, r.gltf), f"{stem}_{view}{ext or '.png'}", frames=a.sheet_frames,
+                          view=view, log=lambda m: print(m, file=sys.stderr))
+    return 1 if problems else 0
+
+
+def cmd_anim(a) -> int:
+    from .agr import arrow_displacement, parse_agr
+    from .ped import load_hxd, read_group_agr
+    install = resolve_install(a.install)
+    hxd = load_hxd(install, a.hxd)
+    if not a.group:
+        for g in hxd.groups:
+            print(f"{g.index:4d} {g.name:24s} {len(hxd.group_anims(g.index)):4d} clips")
+        return 0
+    recs = hxd.group_anims(a.group)
+    with _archive(install, "Stream/World.img") as img:
+        data, src = read_group_agr(install, img, a.group)
+    clips = parse_agr(data, [r.agr_size - 4 for r in recs]) if recs else parse_agr(data)
+    print(f"# {src}: {len(clips)} clips, HXD {a.hxd} lists {len(recs)}")
+    for k, c in enumerate(clips):
+        r = recs[k] if k < len(recs) else None
+        d = r.duration if r else c.duration
+        t = arrow_displacement(c)
+        speed = (t[0] ** 2 + t[1] ** 2 + t[2] ** 2) ** 0.5 / d if d else 0
+        print(f"{k:4d} {(r.name if r else '?'):40s} type {c.key_type} bones {c.bone_count:2d} "
+              f"keys {c.key_count:5d} dur {d:6.3f}s travel ({t[0]:+.3f},{t[1]:+.3f},{t[2]:+.3f}) m "
+              f"{speed:5.2f} m/s")
+    return 0
+
+
 def cmd_nft(a) -> int:
     from .nft import TextureDictionary, safe_name
     install = resolve_install(a.install)
@@ -191,6 +260,25 @@ def main(argv=None) -> int:
     p.add_argument("--txd", help="override the texture dictionary (default: from the IDE)")
     p.add_argument("--file-space", action="store_true", help="keep root/model node transforms")
     p.set_defaults(fn=cmd_nif)
+
+    p = sub.add_parser("ped", help="skinned character (e.g. PLAYER) to glTF with skeleton and .agr clips")
+    p.add_argument("name", help="World.img model stem, e.g. PLAYER")
+    p.add_argument("--group", default="C_Player", help="animation group (.agr) for the clips (default C_Player)")
+    p.add_argument("--anims", nargs="*", help="clip names (IDLE, C_PLAYER\\RUN, or * for all); "
+                                               "default: Jimmy's locomotion set")
+    p.add_argument("--no-anims", action="store_true", help="skeleton and skin only")
+    p.add_argument("--root-motion", default="inplace", choices=["inplace", "raw", "dummy"])
+    p.add_argument("--txd", help="override the texture dictionary (default: from the IDE)")
+    p.add_argument("--no-textures", action="store_true")
+    p.add_argument("--sheet", help="also render a CPU contact sheet PNG (bind pose + frames per clip)")
+    p.add_argument("--sheet-views", nargs="+", default=["side", "front"], choices=["side", "front"])
+    p.add_argument("--sheet-frames", type=int, default=6)
+    p.set_defaults(fn=cmd_ped)
+
+    p = sub.add_parser("anim", help="list HXD groups, or the clips of one group with durations and travel")
+    p.add_argument("group", nargs="?", help="group name, e.g. C_Player (omit to list groups)")
+    p.add_argument("--hxd", default="MAINPED")
+    p.set_defaults(fn=cmd_anim)
 
     p = sub.add_parser("nft", help="decode .nft texture dictionaries to PNG")
     p.add_argument("names", nargs="+", help="World.img .nft names or paths to loose .nft/.txd files")

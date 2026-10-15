@@ -27,6 +27,10 @@ Set one of these. The path is never hard-coded.
     python3 -m tools.importers nif SC1b_bldg_main LOBBY01
     python3 -m tools.importers nft G_scBuilding           # or a path to a loose .nft/.txd
     python3 -m tools.importers ipb tschool ischool
+    python3 -m tools.importers ped PLAYER                  # Jimmy: skinned glTF + locomotion clips
+    python3 -m tools.importers ped PLAYER --anims '*' --sheet ~/bully-remake-evidence/m3/sheet.png
+    python3 -m tools.importers anim                       # list MAINPED.HXD animation groups
+    python3 -m tools.importers anim C_Player              # clips: play duration, travel, speed
 
 Tests: `python3 -m pytest tools/tests` (synthetic fixtures). Set `BULLY_INSTALL` to also
 run the integration tests against the real install.
@@ -85,5 +89,23 @@ materials are written as `BLEND` and the UE step must read `blend_mode`. Vertex 
   (header line ends in CRLF, zero bare LF bytes); the inverse is ambiguous. They are skipped.
 - Normal-map green channel convention (D3D vs GL) is not verified.
 - TexDesc clamp/filter bit layout is inferred from Gamebryo docs (school data: all 0x3200).
-- Skinned shapes are exported in their stored bind pose, without skin weights.
+- `nif`/`world` still export skinned shapes as static meshes in their stored pose; use `ped` for a
+  skinned character (skeleton, JOINTS_0/WEIGHTS_0, inverse bind matrices, glTF animations).
 - Texture transforms on slots are recorded but not applied.
+
+## Skinned characters and animation (`ped`, `anim`)
+
+Formats and confidence: `docs/re-notes/anim-formats.md`. `ped <MODEL>` writes `models/<MODEL>.gltf`:
+
+- one glTF node for the model, under it the skeleton joints (every NiNode of the skeleton subtree, NIF
+  file order, which is the `.agr` track order: 36 joints for a pedestrian, `Dummy` first, `ARROW` last);
+- one mesh node per skinned shape, all sharing one skin (inverse bind matrices from NiSkinData), up to 4
+  weights per vertex (Jimmy uses at most 3);
+- one glTF animation per clip, named by the HXD (`IDLE`, `PLAYERRUN`, ...), times in seconds of the HXD
+  play duration, `extras` with group, hash, key type, loop check and `root_motion`
+  (`travel_game_m`, `travel_gltf_m`, `speed_m_s`, `mode`).
+
+`--root-motion`: `inplace` (default; pelvis minus the ground-arrow travel, arrow held, the travel left to
+the movement code), `raw` (as stored), `dummy` (travel on the root joint, for root-motion extraction).
+Forward in every clip is game +y = glTF -Z; the bind pose itself faces the other way (see the notes).
+`--sheet` renders a CPU contact sheet (bind pose + frames of every clip) as evidence.

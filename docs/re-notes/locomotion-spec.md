@@ -127,3 +127,76 @@ Default follow distance, height offset, look-at offset, pitch and yaw defaults, 
 The install's `Act/Act.img` (479 entries, same IMG format) contains `Player.cat`, `SimpleLoco.cat`, `Locomotion.cat`, `GlobalLoco.cat`. Extracting them and running `bully-mact-tool/CAT_TO_MACT.py` (numpy required) produces readable MACT text — e.g. `SimpleLoco.cat` → 931 lines with `MotionIntentionSpeed` / `PedVelocity` conditions and `Locomotion` tracks carrying float params (speeds/rates, e.g. `3.400000`, `6.283185` = 2π turn rate). Decoded dumps are **derived game data — never commit them**; regenerate into the scratchpad as needed.
 
 **OPEN:** map `Tracks/Locomotion` param offsets (param00016/24/36/44/48/52…) to names via the tool's `DB/` + `TEMPLATES/`, cross-checked in Ghidra (`CPlayerPed::ProcessControl` @0x49bae0). That mapping yields the ground-truth run/sprint/jump numbers for milestone 3.
+
+## 2026-10-15, builder A2: Jimmy's numbers from the action trees and the clips
+
+Method: `Act/Act.img` → `GlobalLoco.cat`, `JumpActions.cat`, `SimpleLoco.cat`, `Player.cat` decoded with
+`bully-mact-tool/CAT_TO_MACT.py` into the scratchpad (derived game data, not committed). Animation speeds
+come from the decoded clips (`python3 -m tools.importers anim C_Player`; formats in `anim-formats.md`).
+The player's locomotion lives in **`GlobalLoco`** (`/Global/Locomotion/...`, cited by Jimmy's C_PLAYER
+clips); `Player.act` itself only holds six minor Locomotion tracks.
+
+### Param names for `Locomotion` tracks (hash 0xA972A63F): what the DB/TEMPLATES give
+
+`bully-mact-tool/TEMPLATES/TEMPLATES_TRACKS.txt` only lists **offsets and types** (`param00024 float`, …);
+`DB/HASHES_*.txt` name track classes and strings, not fields. So the templates do **not** name the
+parameters. The names below are inferred from the values (cross-checks in the right column). Confirming them
+needs the Locomotion track's reader in Bully.exe (Ghidra, OPEN): the class factory is reached through
+`FUN_0061a4b0` (bully-re docs/cat.md) with hash 0xA972A63F.
+
+| Offset | Type | Inferred meaning | Evidence | Confidence |
+|---|---|---|---|---|
+| 24 | float | top speed, m/s (at the top of the intention range) | sprint 8.8 vs RUNFAST clip 8.01 m/s; −1 = "keep current" in stop/idle nodes | INFERRED |
+| 28 | float | base speed, m/s (at the bottom of the intention range) | run 3.6 = PLAYERRUN clip 3.61 m/s; sprint-jump 24 = 28 = 7.5 | INFERRED, strong for run |
+| 32 | float | stick/intention value where speed 28 applies | walk 0.2, stealth 0.3, run 0.5, sprint 1.05 | INFERRED |
+| 36 | float | stick/intention value where speed 24 applies | walk 0.4, stealth 0.485, run 1.05, sprint 1.5. The `MotionIntentionSpeed` conditions use the same thresholds (0.1 idle/stop, 0.485 run strafe, 1.05 sprint jump) | INFERRED, strong |
+| 40 | bool | true almost everywhere; false only in fall nodes | | OPEN |
+| 44 | float | turn rate, rad/s (higher in `TurnFast` children: run 5.5 → 7, sprint 6 → 10, run start 6 → 14) | | INFERRED |
+| 48 | float | turn-related second value (run 1.0, TurnFast 5.0; walk 0.1; strafe/stop 90) | | OPEN |
+| 52 | float | 2π in every player node (max turn, rad/s?) | | OPEN |
+| 56-58 | bool | strafe-mode flags (true in strafe/aim nodes) | | INFERRED |
+| 64 | int | 1 on ground loco, 0 in jump/fall nodes | | OPEN |
+| 68 / 72 | float | acceleration / deceleration times, s (run 0.333 / 0.333, walk 0.2 / 0.3, sprint-jump land 0.1 / 0.267) | | INFERRED |
+| 80-120 | | constant defaults in every player node (100, 100, 100, 0.9, 1, 1, 1, 0.7, 0.5, 0.1, 0) | | OPEN |
+
+### Jimmy, ground locomotion (`GlobalLoco/Locomotion/...`)
+
+| Node | 24 top | 28 base | 32-36 intention | 44 turn | 68/72 accel/decel | Clip (speed as authored) |
+|---|---|---|---|---|---|---|
+| `LocomotionExecutes/WalkBasic` | 1.8 | 1.3 | 0.2-0.4 | 10.0 | 0.2 / 0.3 | PLAYERWALK, 2.05 m/s |
+| `LocomotionExecutes/Walk_StartLoco` | 1.8 | 1.2 | 0.3-0.5 | 7.0 | 0.3 / — | PLAYERWALK_START |
+| `Walk/Sneak/StealthWalk` | 1.2 | 0.8 | 0.3-0.485 | 8.0 | 0.2 / 0.3 | PLAYER_WALK_STEALTH |
+| `Run/Run/RunController/Run/Run/LocoTracks/DEFAULT` | **3.9** | **3.6** | 0.5-1.05 | 5.5 | 0.333 / 0.333 | PLAYERRUN, **3.61 m/s** |
+| `…/Run/LocoTracks/TurnFast` | 3.9 | 3.6 | 0.5-1.05 | 7.0 | 0.333 / 0.333 | |
+| `LocomotionExecutes/Run_StartLoco/DEFAULT` | 4.5 | 3.6 | 0.5-1.05 | 6.0 | 0.2 / 0.267 | PLAYERRUN_START, 3.64 m/s |
+| `Run/Run/RunController/Sprint/SprintBasic/LocoTracks/DEFAULT` | **8.8** | **6.5** | 1.05-1.5 | 6.0 | 0.333 / 0.333 | RUNFAST, **8.01 m/s** |
+| `…/Sprint/SprintBasic/LocoTracks/TurnFast` | 8.8 | 5.5 | 1.05-1.5 | 10.0 | 0.333 / 0.333 | |
+| `Crouch/…/CrouchLoco` / `CrouchRun` | 1.5 / 5.0 | 1.0 / 2.0 | 0-0.5 / 1.05-1.5 | 8.0 | 0.167 / 0.167 | CROUCH_WALK / CROUCH_RUN |
+| `Run/RunStop/…/Run_To_Idle/Loco/Winter` | 8.0 | 0 | 0-0.5 | 8.0 | 0 / — | RUNSTOP* (skid) |
+
+`SimpleLoco` (the scripted/AI loco branch) uses 3.4 / 0 with turn 6.0 and 2π.
+
+### Jimmy, jumping (`JumpActions`)
+
+| Node | Track | Values |
+|---|---|---|
+| `Jump/IdleJump/IdleJump` | Animation `C_PLAYER\IDLEJUMP` (0.933 s); Gravity off, then Gravity on with time 0.433 s (param 12 = 0x3EDDDDD3) | standing jump is animation-driven: the Root (pelvis) track rises in the clip |
+| `Jump/RunJUMP/PickLaunch` | Locomotion 5.2 / 4.0, intention 0.5-1.05 | entry condition MotionIntentionSpeed > 0.1 (mode 5) |
+| `RunJUMP/…/CompressRight/Jump` | **LocomotionJump 24 = 1.10, 28 = 2.5, 40 = 0.872665 (50°)** | INFERRED: 24 = jump height (m), 28 = horizontal reach or launch speed, 40 = launch/slope limit angle |
+| `Jump/SprintJUMP` | entry: MotionIntentionSpeed > 1.05 and PedVelocity > 0.0729 (raw 0x3D958106) | |
+| `SprintJUMP/…/Jump` | **LocomotionJump 24 = 1.05, 28 = 4.0, 40 = 50°** | sprint jump: lower, longer |
+| `SprintJUMP/PickLaunch` and `…/Land/SpeedRun` | Locomotion 7.5 / 7.5, intention 1.05-1.5, turn 5.0 | speed held through the sprint jump |
+| `RunJUMP/…/Land/LocoBasic` | Locomotion 6.0 / 4.0 | |
+| `*/Jump` (air) | Locomotion −1 / −1, turn 0.8 rad/s, 48 = π | air steering |
+| Animations | JOGJUMP_L / _R (launch, 0.133 s window), FALL_LAND (land still), JOGJUMP (land moving, from 0.7-0.77 s) | |
+| `Falling/Fall/Falling/Fall_No_Damage` | Locomotion 2.15 / 1.2, intention 0.3-0.5, turn 12; Gravity on (param 28 printed 0x2E90203C, vs 0x6F12833C in jump nodes; meaning OPEN) | fall air control |
+| `Falling/Fall/Falling/Fall_Damage/Fall` | condition DistToGround > 5.0 m | **damaging fall threshold: 5 m** (INFERRED from the condition) |
+| Climbs | `Climb_1M` (JUMP1), `Climb_1-5M` (JUMP15), `Climb_2-25M` (WALLJUMP_CLIMB 1.8 s) | ledge heights 1 m / 1.5 m / 2.25 m by node name |
+
+### What this settles for milestone 3
+
+- Run speed 3.6 m/s (clip 3.61 m/s) and sprint 6.5-8.8 m/s (clip 8.01 m/s) are game data, not guesses.
+  Walk 1.3-1.8 m/s; the walk clip is authored at 2.05 m/s, so the game plays it slower (rate sync).
+- Jump height ~1.1 m (run) / 1.05 m (sprint) if offset 24 is height: OPEN until the LocomotionJump reader is
+  read in Ghidra (hash 0xFB454463). Gravity magnitude is still OPEN (the Gravity track carries a hash, not a
+  number).

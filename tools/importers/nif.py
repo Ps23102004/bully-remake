@@ -18,6 +18,7 @@ its data dropped, never half-used. Unknown block types are skipped by size.
 
 from __future__ import annotations
 
+import struct
 from dataclasses import dataclass, field
 
 from .binreader import FormatError, Reader
@@ -323,7 +324,74 @@ def _flags_property(r: Reader) -> dict:
     return d
 
 
+def _transform13(r: Reader) -> dict:
+    """NiTransform as stored in skin blocks: rotation 9f (row-major, same
+    convention as NiAVObject), translation 3f, scale f."""
+    rot = r.array("f", 9)
+    return {"rotation": rot, "translation": r.vec3(), "scale": r.f32()}
+
+
+def _skin_instance(r: Reader) -> dict:
+    # Field order per bully-re docs/nif.md ("Le squelette"); verified by the
+    # exact-size rule on PLAYER.nif.
+    d = {"data": r.i32(), "partition": r.i32(), "skeleton_root": r.i32()}
+    n = r.u32()
+    if n > 1024:
+        raise FormatError(f"NiSkinInstance: {n} bones")
+    d["bones"] = list(r.array("i", n))
+    return d
+
+
+def _skin_data(r: Reader) -> dict:
+    """Per-bone skin transform S (mesh space -> bone space) and weights.
+    Skinning: v' = sum_b w_b * (M_b o S_b)(v), M_b = bone node transform in
+    model space, no transpose (bully-re docs/nif.md, test_skin)."""
+    d = {"overall": _transform13(r)}
+    n = r.u32()
+    if n > 1024:
+        raise FormatError(f"NiSkinData: {n} bones")
+    has_w = r.u8()
+    d["has_weights"] = has_w
+    bones = []
+    for _ in range(n):
+        b = {"transform": _transform13(r), "sphere_center": r.vec3(), "sphere_radius": r.f32()}
+        nv = r.u16()
+        if has_w:  # (u16 vertex index, f32 weight) pairs, 6 bytes each
+            b["weights"] = list(struct.iter_unpack(r.e + "Hf", r.bytes(nv * 6)))
+        else:
+            b["weights"] = []
+            b["num_vertices"] = nv
+        bones.append(b)
+    d["bones"] = bones
+    return d
+
+
+def _skin_partition(r: Reader) -> dict:
+    n = r.u32()
+    if n > 4096:
+        raise FormatError(f"NiSkinPartition: {n} partitions")
+    parts = []
+    for _ in range(n):
+        nv, nt, nb, ns, nwpv = r.u16(), r.u16(), r.u16(), r.u16(), r.u16()
+        p = {"num_vertices": nv, "num_triangles": nt, "bones": list(r.array("H", nb)),
+             "weights_per_vertex": nwpv}
+        p["vertex_map"] = list(r.array("H", nv)) if r.u8() else None
+        p["weights"] = r.array("f", nv * nwpv) if r.u8() else None
+        strip_lengths = r.array("H", ns)
+        if r.u8():
+            if ns:
+                p["strips"] = [r.array("H", k) for k in strip_lengths]
+            else:
+                p["triangles"] = r.array("H", nt * 3)
+        p["bone_indices"] = r.bytes(nv * nwpv) if r.u8() else None
+        parts.append(p)
+    return {"partitions": parts}
+
+
 DECODERS = {
+    "NiSkinInstance": _skin_instance,
+    "NiSkinData": _skin_data,
+    "NiSkinPartition": _skin_partition,
     "NiNode": _node,
     "NiTriShape": _geometry,
     "NiTriStrips": _geometry,
