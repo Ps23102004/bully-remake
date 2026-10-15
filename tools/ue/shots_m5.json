@@ -19,30 +19,30 @@
   {
    "name": "front_gates",
    "location_cm": [
-    32200,
+    33200,
     7300,
     2000
    ],
    "look_at_cm": [
     18600,
     7300,
-    2200
+    1180
    ],
-   "fov": 75,
+   "fov": 57,
    "ground_trace": true,
-   "eye_height_cm": 170
+   "eye_height_cm": 560
   },
   {
    "name": "facade_courtyard",
    "location_cm": [
-    26500,
+    28800,
     7300,
-    830
+    900
    ],
    "look_at_cm": [
     19500,
     7330,
-    2800
+    2900
    ],
    "fov": 68,
    "ground_trace": false
@@ -56,26 +56,27 @@
    ],
    "look_at_cm": [
     23000,
-    7800,
-    1450
+    8300,
+    2400
    ],
-   "fov": 62,
+   "fov": 66,
    "ground_trace": false
   },
   {
    "name": "lobby_interior",
    "location_cm": [
     -62860,
-    32100,
+    32380,
     170
    ],
    "look_at_cm": [
     -62860,
     30000,
-    420
+    430
    ],
-   "fov": 85,
+   "fov": 72,
    "ground_trace": false
   }
- ]
+ ],
+ "_round2": "Round 2 reframe per CRITIQUE_R1: gates pulled back 10 m, eye 2.5 m, ~level, FOV 62; facade back 23 m / up; path panned left + tilted up; lobby FOV 72 from the far wall."
 }

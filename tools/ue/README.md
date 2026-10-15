@@ -302,3 +302,23 @@ sidecar writer `shot_sidecar.py` writes `NN_<name>.json` beside every PNG (varia
 warm-up/settle seconds, commit). Determinism: same map, 20 s warm-up + 12 s settle, no auto exposure, static sun; a repeat
 render differed by 0.2 to 0.9 / 255 mean absolute (foliage noise only). `run_shots.sh` now makes `--shots`/`--out` absolute
 (the engine runs from another cwd; a relative path left an idle engine running).
+
+### Round 2 (critic CRITIQUE_R1 fixes, winner `B_raking_amber`)
+<!-- OWNER: builder-B5 (shot), round 2 -->
+
+    tools/ue/run_candidates.sh --variants B_raking_amber --out ~/bully-remake-evidence/m5/round2   # 3840x2160 + sidecars
+    python3 tools/ue/measure_shots.py DIR [--sheet s.jpg]                                          # luma medians / near-black / window glow
+    tools/ue/run_probe.sh --mode scene --near "x,y,z,r" --mats "," --out p.json                    # actors/materials near a point (no GPU)
+    tools/ue/run_probe.sh --shot NAME --rects "x0,y0,x1,y1;..." --out p.json                       # actors projecting into pixel rects of a shot
+
+`default_variant` is now B. New in `lighting.py` / `lighting_variants.json`:
+- **Clouds**: `VolumetricCloud` with `MI_BullyClouds` parented to the engine's `m_SimpleVolumetricCloud_Inst` (the base material alone renders nothing:
+  the Inst carries the noise/pattern textures). B: coverage 0.15, density 0.2, scale 256, layer 1.6-4.6 km.
+- **Shade lift**: B sky light 1.4 -> 5.0 with a warm lower hemisphere (ground bounce) instead of black.
+- **Backlit foliage**: leaf/branch/vine card MIs (masked, ~43) get `Glow` = base colour and `GlowGain` 1500 (emissive = albedo*gain, a transmission
+  cheat that needs no master-material change).
+- **Lobby**: interior key now soft (14 klx, no shadows, 5 deg); three rect lights (back windows, both sides); the `*Night` window twins (coplanar with the day
+  panes, z-fighting to grey) hidden; day-window MIs emissive (gain 14000); floor MIs roughness 0.22 / specular 0.6.
+- **Shot hides** (`shot_hides`): actors set hidden-in-game for the hero shots (see MEASUREMENTS.md in the round-2 evidence).
+- Birds: `build_birds` exists but is disabled (count 0); lit flat cubes read as debris.
+- Cameras (`shots_m5.json`): gates x 33200, eye 5.6 m, FOV 57; facade from x 28800, FOV 68, pitch ~12 deg; path panned and tilted up, FOV 66; lobby from the far wall, FOV 72.
