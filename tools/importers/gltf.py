@@ -13,6 +13,7 @@ import os
 import struct
 
 FLOAT = 5126
+UBYTE = 5121
 USHORT = 5123
 UINT = 5125
 ARRAY_BUFFER = 34962
@@ -55,17 +56,35 @@ class GltfBuilder:
         self.doc["bufferViews"].append(view)
         return len(self.doc["bufferViews"]) - 1
 
-    def add_floats(self, values, type_: str, minmax: bool = False) -> int:
+    def add_floats(self, values, type_: str, minmax: bool = False, vertex: bool | None = None) -> int:
+        """`vertex`: mark the buffer view as vertex data (ARRAY_BUFFER).
+        Default: True for VEC2/VEC3/VEC4, False for SCALAR/MAT4 (animation
+        times, inverse bind matrices must not carry a target)."""
         n = TYPE_COUNT[type_]
         if len(values) % n:
             raise ValueError("float data not a multiple of component count")
+        if vertex is None:
+            vertex = type_ in ("VEC2", "VEC3", "VEC4")
         count = len(values) // n
         payload = struct.pack(f"<{len(values)}f", *values)
-        acc = {"bufferView": self._view(payload, ARRAY_BUFFER), "componentType": FLOAT,
+        acc = {"bufferView": self._view(payload, ARRAY_BUFFER if vertex else None), "componentType": FLOAT,
                "count": count, "type": type_}
         if minmax and count:
             acc["min"] = [min(values[k::n]) for k in range(n)]
             acc["max"] = [max(values[k::n]) for k in range(n)]
+        self.doc["accessors"].append(acc)
+        return len(self.doc["accessors"]) - 1
+
+    def add_uints(self, values, type_: str, ctype: int = USHORT) -> int:
+        """Unsigned integer vertex attribute (JOINTS_0): UNSIGNED_BYTE or
+        UNSIGNED_SHORT components."""
+        n = TYPE_COUNT[type_]
+        if len(values) % n:
+            raise ValueError("int data not a multiple of component count")
+        code = {UBYTE: "B", USHORT: "H"}[ctype]
+        payload = struct.pack(f"<{len(values)}{code}", *values)
+        acc = {"bufferView": self._view(payload, ARRAY_BUFFER), "componentType": ctype,
+               "count": len(values) // n, "type": type_}
         self.doc["accessors"].append(acc)
         return len(self.doc["accessors"]) - 1
 
@@ -210,4 +229,85 @@ def validate_gltf(path: str, check_images: bool = True) -> list:
             problems.append(f"node {ni}: bad mesh index")
         if "matrix" in n and len(n["matrix"]) != 16:
             problems.append(f"node {ni}: matrix is not 16 floats")
+        if "skin" in n and n["skin"] >= len(doc.get("skins", [])):
+            problems.append(f"node {ni}: bad skin index")
+        if "rotation" in n:
+            q = n["rotation"]
+            if len(q) != 4 or abs(math.sqrt(sum(c * c for c in q)) - 1.0) > 1e-3:
+                problems.append(f"node {ni}: rotation is not a unit quaternion")
+    problems += _validate_skins_animations(doc, views, accessors, buffers)
+    return problems
+
+
+def read_accessor(doc, buffers, idx) -> tuple:
+    """Flat tuple of an accessor's components (float, ubyte or ushort)."""
+    a = doc["accessors"][idx]
+    v = doc["bufferViews"][a["bufferView"]]
+    code = {FLOAT: "f", USHORT: "H", UINT: "I", UBYTE: "B"}[a["componentType"]]
+    n = a["count"] * TYPE_COUNT[a["type"]]
+    return struct.unpack_from(f"<{n}{code}", buffers[v["buffer"]], v.get("byteOffset", 0) + a.get("byteOffset", 0))
+
+
+def _validate_skins_animations(doc, views, accessors, buffers) -> list:
+    problems = []
+    nodes = doc.get("nodes", [])
+    skins = doc.get("skins", [])
+    for si, sk in enumerate(skins):
+        joints = sk.get("joints", [])
+        if not joints or any(j >= len(nodes) for j in joints):
+            problems.append(f"skin {si}: bad joint list")
+            continue
+        if "inverseBindMatrices" in sk:
+            a = accessors[sk["inverseBindMatrices"]]
+            if a["type"] != "MAT4" or a["count"] != len(joints):
+                problems.append(f"skin {si}: inverseBindMatrices count {a['count']} != joints {len(joints)}")
+            if views[a["bufferView"]].get("target"):
+                problems.append(f"skin {si}: inverseBindMatrices bufferView must not have a target")
+    for mi, m in enumerate(doc.get("meshes", [])):
+        users = [n for n in nodes if n.get("mesh") == mi]
+        for pi, p in enumerate(m["primitives"]):
+            at = p["attributes"]
+            if ("JOINTS_0" in at) != ("WEIGHTS_0" in at):
+                problems.append(f"mesh {mi} prim {pi}: JOINTS_0 without WEIGHTS_0 or vice versa")
+                continue
+            if "JOINTS_0" not in at:
+                continue
+            skinned_users = [n for n in users if "skin" in n]
+            if not skinned_users:
+                problems.append(f"mesh {mi}: has JOINTS_0 but no node with a skin uses it")
+                continue
+            nj = len(skins[skinned_users[0]["skin"]]["joints"]) if skinned_users[0]["skin"] < len(skins) else 0
+            jv = read_accessor(doc, buffers, at["JOINTS_0"])
+            wv = read_accessor(doc, buffers, at["WEIGHTS_0"])
+            if jv and max(jv) >= nj:
+                problems.append(f"mesh {mi} prim {pi}: joint index {max(jv)} >= {nj} joints")
+            bad = 0
+            for k in range(0, len(wv), 4):
+                if abs(sum(wv[k:k + 4]) - 1.0) > 2e-3 or min(wv[k:k + 4]) < 0:
+                    bad += 1
+            if bad:
+                problems.append(f"mesh {mi} prim {pi}: {bad} vertices whose weights do not sum to 1")
+    for ai, an in enumerate(doc.get("animations", [])):
+        samplers = an.get("samplers", [])
+        for ci, ch in enumerate(an.get("channels", [])):
+            t = ch.get("target", {})
+            if t.get("node", -1) >= len(nodes) or ch["sampler"] >= len(samplers):
+                problems.append(f"animation {ai} channel {ci}: bad node or sampler")
+                continue
+            s = samplers[ch["sampler"]]
+            ia, oa = accessors[s["input"]], accessors[s["output"]]
+            want = {"rotation": "VEC4", "translation": "VEC3", "scale": "VEC3"}.get(t.get("path"))
+            if want is None or oa["type"] != want:
+                problems.append(f"animation {ai} channel {ci}: path {t.get('path')} with output {oa['type']}")
+            if ia["count"] != oa["count"]:
+                problems.append(f"animation {ai} channel {ci}: {ia['count']} times, {oa['count']} values")
+            if "min" not in ia or "max" not in ia:
+                problems.append(f"animation {ai} sampler {ch['sampler']}: input without min/max")
+            times = read_accessor(doc, buffers, s["input"])
+            if any(b <= a for a, b in zip(times, times[1:])):
+                problems.append(f"animation {ai} sampler {ch['sampler']}: times not strictly increasing")
+            if t.get("path") == "rotation":
+                q = read_accessor(doc, buffers, s["output"])
+                if any(abs(math.sqrt(sum(c * c for c in q[k:k + 4])) - 1.0) > 1e-3 for k in range(0, len(q), 4)):
+                    problems.append(f"animation {ai} channel {ci}: non-unit rotation")
     return problems
