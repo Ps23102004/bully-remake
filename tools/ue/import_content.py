@@ -801,4 +801,6 @@ def main():
     log("BR_IMPORT_DONE %s" % ("OK" if not REPORT["errors"] else "WITH_ERRORS"))
 
 
-main()
+# import_character.py imports this module for its texture/material helpers; it sets BR_NO_MAIN=1.
+if os.environ.get("BR_NO_MAIN") != "1":
+    main()
