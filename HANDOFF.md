@@ -12,7 +12,7 @@
 
 ## Phase 0 milestones (status)
 
-1. Assets in (importers → academy grounds + main building in UE) — **in progress**
+1. Assets in (importers → academy grounds + main building in UE) — **in progress**: UE 5.8 project skeleton compiles (`unreal/BullyRemake`, Build.sh, settings V7); format survey done (`docs/re-notes/format-survey.md`); opus-builder writing `tools/importers` on branch `phase0-importers` (worktree `~/bully-remake-wt/importers`)
 2. Interior in — not started
 3. Jimmy moves — not started
 4. Signs of life — not started
