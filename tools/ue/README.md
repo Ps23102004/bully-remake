@@ -216,3 +216,36 @@ the character); `action_shot` moves (target or yaw; `"gait": "none"` stands), op
 (`"cam": "lock" | "side" | "front" | "follow"`); triggers `none` / `none_land` move without a shot;
 `record_start {"fps":30}` / `record_stop` switch to a fixed time step and dump one viewport PNG per frame, which
 `run_walk.sh` encodes to `<out>/sequence.mp4` (keeping every 10th frame in `frames_keep/`).
+
+## Milestone 5: THE SHOT (`lighting.py`, `run_lighting.sh`, `run_candidates.sh`, `shots_m5.json`)
+<!-- OWNER: builder-B5 (shot) -->
+
+    tools/ue/run_lighting.sh --variant B_raking_amber        # re-apply one variant to the saved map (~20 s, no GPU)
+    tools/ue/run_candidates.sh [--variants a,b] [--out DIR]  # per variant: lighting -> 4 vantages @3840x2160 -> sidecars (~2.5 min each)
+
+The lighting rig moved out of `import_content.py` into `lighting.py` (`import_content` calls `build_rig`; the
+same module re-runs standalone). All numbers live in `lighting_variants.json` (3 variants: `A_classic_gold`,
+`B_raking_amber`, `C_rose_haze`; sun elevation/azimuth/intensity/temperature, sky, atmosphere, fog, EV100,
+white balance). Azimuth is the world yaw toward the sun (0 = +X; gates and facade face +X).
+
+Debts fixed:
+
+- **Auto exposure -> locked.** The unbound post-process volume sets auto-exposure method Basic with min = max
+  brightness = `exposure_ev100` (EV100 because the project uses `ExtendDefaultLuminanceRange`), bias 0. Every frame of a
+  variant has the same exposure (A 11.8, B 11.6, C 12.0), so rounds are comparable. Sun is physical (90-120 klx).
+- **Interior overexposure.** All interior pockets (scenes `isc_*`, `ischool`: 1867 actors, every one far from the campus
+  at x < -40000) are on *lighting channel 1 only*; the sun stays on channel 0, so it neither lights nor shadows them.
+  A private directional "interior key" (channel 1 only, 30 klx, pitch -78, 10 deg source angle, 4600 K) lights them to the
+  same EV as the exterior. Chosen over a per-pocket bounded exposure volume: one global exposure, nothing pops at door
+  transitions, and python cannot build a volume brush in the commandlet anyway. The open top of the lobby is no longer a
+  white void. Sky-light ambient can still reach open-top interiors (sky light has no channel mask); it is now a minor fill.
+- **Fake-mirror floor.** `LM_lobbyflr` (materials `TransFloor`, `TransFloor Dark`) was a translucent tile layer over
+  `reflect_LOBBY`, an upside-down lobby copy 9.5 m below. Documented choice: the floor material is forced **opaque**
+  (`FAKE_MIRROR_FLOOR_MATERIALS` in `mat_key`; a new instance hash, no master rebuild) and `reflect_LOBBY` is **not placed**
+  (`FAKE_MIRROR_MODELS`). Lumen supplies real reflections. Not touched: `GymFloor` (`TransFloorGym`) uses the same trick.
+
+`shots_m5.json` holds the four fixed vantages (front gates, facade from the courtyard, path with oaks, lobby); the
+sidecar writer `shot_sidecar.py` writes `NN_<name>.json` beside every PNG (variant settings, camera, resolution,
+warm-up/settle seconds, commit). Determinism: same map, 20 s warm-up + 12 s settle, no auto exposure, static sun; a repeat
+render differed by 0.2 to 0.9 / 255 mean absolute (foliage noise only). `run_shots.sh` now makes `--shots`/`--out` absolute
+(the engine runs from another cwd; a relative path left an idle engine running).
