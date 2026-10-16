@@ -233,8 +233,8 @@ void UAmbientSubsystem::Spawn(UWorld& World)
 	TSharedPtr<FJsonObject> Cfg = ReadAmbientConfig();
 	if (!Cfg) { return; }
 
-	// footstep sets
-	TMap<FString, TArray<TObjectPtr<USoundBase>>> StepSets;
+	// footstep sets (kept as a member: scripted NPCs attach the same sets later)
+	StepSets.Reset();
 	if (const TSharedPtr<FJsonObject>* Fs; Cfg->TryGetObjectField(TEXT("footsteps"), Fs))
 	{
 		for (const auto& KV : (*Fs)->Values)
@@ -244,7 +244,7 @@ void UAmbientSubsystem::Spawn(UWorld& World)
 			for (const TSharedPtr<FJsonValue>& V : KV.Value->AsArray())
 			{
 				const TSharedPtr<FJsonObject> O = V->AsObject();
-				if (USoundBase* S = O ? LoadGameSound(O->GetStringField(TEXT("bank")), O->GetStringField(TEXT("name"))) : nullptr) { Set.Add(S); }
+				if (USoundBase* S = O ? LoadGameSound(O->GetStringField(TEXT("bank")), O->GetStringField(TEXT("name"))) : nullptr) { Set.Add(S); AllStepSounds.Add(S); }
 			}
 			UE_LOG(LogAmbientSys, Display, TEXT("BR_AMBIENT footstep set '%s': %d sounds loaded"), *KeyStr, Set.Num());
 		}
@@ -335,6 +335,18 @@ void UAmbientSubsystem::Spawn(UWorld& World)
 	if (FParse::Value(FCommandLine::Get(), TEXT("BRAmbientCam="), CamSpec, false))
 	{
 		StartEvidenceCamera(World, CamSpec);
+	}
+}
+
+void UAmbientSubsystem::AttachFootsteps(ACharacter* Character, const FString& Kind, const FString& Tag)
+{
+	if (!Character) { return; }
+	if (UBullyFootstepComponent* F = NewObject<UBullyFootstepComponent>(Character, TEXT("Footsteps")))
+	{
+		F->Sounds = StepSets.FindRef(Kind);
+		F->Role = Kind == TEXT("female") ? TEXT("female") : TEXT("student");
+		F->Tag = Tag;
+		F->RegisterComponent();
 	}
 }
 

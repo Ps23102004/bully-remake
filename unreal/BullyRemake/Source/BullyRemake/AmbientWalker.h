@@ -53,6 +53,9 @@ public:
 	int32 GetYieldCount() const { return YieldCount; }
 	float GetMinPlayerDistance() const { return MinPlayerDist; }
 
+	/** Scripted-NPC hand-back (UScriptedNPCSubsystem "make ambient"): replaces the loop and starts walking it from `Start`. */
+	void ResumeLoop(const TArray<FVector>& Loop, int32 Start = 0);
+
 	virtual void Tick(float DeltaSeconds) override;
 
 protected:

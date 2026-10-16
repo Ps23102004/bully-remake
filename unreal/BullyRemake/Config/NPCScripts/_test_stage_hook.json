@@ -1,0 +1,17 @@
+{
+ "_format": "bully-remake.npc-script/1",
+ "_note": "Test script for the -BRNPCSmoke harness (loaded only by name: the leading underscore keeps it out of the autoload). Proves the mission stage hooks: spawn on mission_start, a beat on stage_begin, despawn on mission_end.",
+ "points": {"probe_spot": [21470, 7000, 1000], "probe_dest": [21470, 7400, 1000]},
+ "gestures": {"laugh": ["LAUGH_01", "LAUGH_02"]},
+ "groups": [
+  {"id": "stage_probe", "event_prefix": "probe",
+   "spawn_on": ["mission_start:smoke_day_one"], "despawn_on": ["mission_end:smoke_day_one:*"],
+   "npcs": [{"id": "probe_a", "ped": "GN_Boy01", "spawn": "probe_spot"}],
+   "beats": [
+    {"id": "on_stage", "on": ["stage_begin:smoke_day_one:use_door"], "emit": ["probe_stage_ok"], "steps": [
+      {"cmd": "goto", "to": "probe_dest", "gait": "walk"},
+      {"cmd": "gesture", "gesture": "laugh"}
+    ]}
+   ]}
+ ]
+}

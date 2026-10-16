@@ -51,6 +51,19 @@ void AAmbientWalker::Advance()
 	if (NextIndex == StartIndex % Waypoints.Num()) { ++LoopsCompleted; }
 }
 
+void AAmbientWalker::ResumeLoop(const TArray<FVector>& Loop, int32 Start)
+{
+	Waypoints = Loop;
+	StartIndex = Waypoints.Num() ? Start % Waypoints.Num() : 0;
+	NextIndex = StartIndex;
+	bIdling = false;
+	YieldPhase = 0;
+	LastPos = ProgressRefPos = GetActorLocation();
+	ProgressRefTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	SetScriptedGait(EBullyGait::Walk);
+	UE_LOG(LogAmbient, Display, TEXT("BR_AMBIENT walker %s resumed a loop of %d waypoints from wp %d (scripted -> ambient)"), *GetName(), Waypoints.Num(), NextIndex);
+}
+
 bool AAmbientWalker::TickYield(double Now, const FVector& Pos)
 {
 	static const bool bDisabled = FParse::Param(FCommandLine::Get(), TEXT("BRNoYield"));   // A/B switch for the logic runs
