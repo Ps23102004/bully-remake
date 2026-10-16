@@ -23,7 +23,7 @@
     {"do": "shot", "name": "c_entrance_hall"},
     {"do": "walk_to", "name": "across_lobby", "x": -62860, "y": 30800, "run": false, "timeout": 25, "radius": 60, "stop_on_door": false},
     {"do": "shot", "name": "c2_lobby_center"},
-    {"do": "walk_to", "name": "up_the_stairs", "x": -62860, "y": 29500, "run": false, "timeout": 25, "radius": 60, "stop_on_door": false},
+    {"do": "walk_to", "name": "up_the_stairs", "x": -62860, "y": 29850, "run": false, "timeout": 25, "radius": 60, "stop_on_door": false},
     {"do": "shot", "name": "c3_stairs_landing"},
     {"do": "log", "name": "after_stairs"},
     {"do": "face", "yaw": 90, "pitch": -8},

@@ -369,3 +369,24 @@ GPU) and logs `BR_WALK`, `BR_DOOR`, `BR_AMBIENT YIELD`, `BR_AUDIO surface`. `BR_
   `tools/ue/walk_polish_surfaces.json` maps the courtyard headless).
 - **For the next rendering session**: `tools/ue/walk_polish_verify.json` (walk into a student, both door directions, footsteps on
   grass / path / sidewalk / lobby tile) -- needs a visible-quality run, NOT run by this task.
+
+## Stairs and upper floor (`slice-stairs`: `run_stairs_check.sh`, `stairs_probe.py`, `gen_stairs_walk.py`)
+<!-- OWNER: slice-stairs -->
+
+Headless (`-game -nullrhi`, GPU-slot wrapped, no window) proof that the 1_01 route is walkable, gates to the principal's office and back:
+
+    tools/ue/run_stairs_check.sh --tag mycheck        # ~85 s; logs BR_STAIRS path lobby->office / gates->door / pawn full route: PASS|FAIL
+    BR_STAIRS_MODE=profile BR_STAIRS_PROFILE="-62860,30500,-62860,29700,5,400" tools/ue/run_stairs_probe.sh   # floor height along a line (risers)
+    BR_STAIRS_MODE=sweep BR_STAIRS_SWEEP="x,y,zfoot,x2,y2" tools/ue/run_stairs_probe.sh                       # what blocks one capsule sweep
+
+`stairs_probe.py` runs inside the running game (`-ExecCmds="py ..."`; `EditorLevelLibrary.get_game_world()` segfaults in `-game`, the
+map's UWorld is found with `find_object`). It flood-fills 8-neighbour capsule steps (r30, hh85, step 45, slope 50 deg: the
+`BullyCharacter` numbers; lift by step height, sweep forward, settle down) over the level's runtime complex-as-simple collision, so
+it sees what the pawn sees. Output: JSON + ASCII walkability trace per run, plus `BR_STAIRS check <name>` for extra points.
+`gen_stairs_walk.py` turns the probe path into a `walk_runner` script (`walk_stairs_*.json`) so the REAL pawn is driven along it.
+
+Findings (2026-10-15): there is no collision gap. The central stairs are a switchback: 8 risers of 20.6 cm (floor 0 -> 165 cm), a
+landing whose back wall (`ischool_103_BULL2_Banner04`, y=29726) ends a straight walk, then two mirrored flights (west and east,
+3 m wide, 165 -> 550 cm) to the upper floor, which holds the office trigger (-63320, 29140, z 550) and `PrincipalRoom`. The M2
+"landing stop" was `walk_m2.json` walking straight on to (-62860, 29500) into that wall; its target is now on the landing. Pawn
+passes lobby -> office -> out at walk, run and sprint gait; risers (20.6 cm) are well under `MaxStepHeight` 45.
