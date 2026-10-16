@@ -61,9 +61,9 @@ An agent can help inspect and diagnose this project; it cannot guarantee compati
 
 ## What can I try today?
 
-### `main`: the campus exploration prototype
+### `main`: campus exploration + the Day One opening slice
 
-Status checked **2026-10-16**, against gameplay commit [`3ef4da4`](https://github.com/oh-ashen-one/bully-remake/commit/3ef4da40765d4531ab4b50386171a543292f8c0f). This README update changes documentation only.
+Status checked **2026-10-16**, against commit [`bc0f782`](https://github.com/oh-ashen-one/bully-remake/commit/bc0f782b05d6e17e4c9c62ab1f1dcc8ae4b74341). `main` is the most up-to-date version of the project; the Day One opening work that previously lived on a separate branch has been merged in.
 
 The repository's development records report these working on the development Mac:
 
@@ -73,14 +73,16 @@ The repository's development records report these working on the development Mac
 - Six student models used by nine ambient walkers on simple loops; player collision and yielding behavior.
 - Locally extracted footsteps and courtyard ambience, plus a golden-hour Lumen lighting setup.
 - Settings-menu code on `main` for horizontal/vertical look sensitivity and invert-Y.
+- An opening-mission ("Day One") framework: a JSON-driven objective/stage machine with an in-game HUD (objective text, waypoint, interaction prompts, mission banners).
+- A melee-combat prototype: light combos, blocking with a guard meter, grappling, a ground kick, lock-on, and a basic enemy with a knock-out.
+- Scripted NPC beats for the opening: a gauntlet of bullies, and a fight crowd that gathers and reacts.
+- A windowed-game mouse-capture fix so look and clicks work on macOS without extra setup.
 
 **Verification has limits.** Development notes record scripted collision checks, renders, and a 90-second fixed-timestep route capture. Those are not a fresh-install certification, a real-time performance benchmark, or proof that every part of the campus works. The original-game half of the side-by-side comparison is still pending. Footstep pitch and the overall live visual/audio feel still need hands-on review. Known rough edges include sprint foot sliding, missing start/stop/turn animations, walkers passing through each other, incomplete area testing, and material/lighting approximations. The settings code also needs checking in your actual play session.
 
-### `phase0`: experimental Day One work, separate from `main`
+### The Day One opening slice is still in progress
 
-The [development-branch handoff](https://github.com/oh-ashen-one/bully-remake/blob/phase0/HANDOFF.md) at [`05a3a49`](https://github.com/oh-ashen-one/bully-remake/commit/05a3a49e6ed2c3ca6bdf6998683870c35ed8a952) reports an opening-mission framework, combat, scripted NPCs, and 26 mission stages passing a headless driver. **This work is not merged into the `main` prototype described above.**
-
-It is not a seamless playable campaign: mission chaining, automatic fight setup, waypoint blips, and parts of the transition flow remain incomplete. The handoff lists five C++ integration gaps, and visual verification of the mission HUD/combat/gauntlet and hands-on combat-feel testing are pending. A headless test passing does not establish that a person can play through the slice unaided. Start with `main`; inspect the actual branch before opting into experiments.
+The opening-mission layer is playable to explore, but **not yet a seamless end-to-end mission.** Known open work, from the [handoff notes](HANDOFF.md): the schoolyard fight does not yet start on its own (the opponent is currently spawned from the console), the first two missions do not auto-chain, mission waypoint blips are dropped, and the epilogue transition is a rough teleport rather than a fade. Combat "feel" — impact effects, hit reactions, tuning — is unjudged and needs hands-on play, and the mission HUD, combat, and gauntlet have been checked in headless logs rather than a rendered play session. A headless test passing does not establish that a person can play the slice unaided. Treat this layer as an in-progress experiment on top of the campus prototype.
 
 ## Requirements and current setup blockers
 
