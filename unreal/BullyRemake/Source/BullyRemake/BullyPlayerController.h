@@ -43,6 +43,8 @@ public:
 
 private:
 	void ApplyLook(float X, float Y, bool bInvert);
+	/** Capture + lock the mouse to the viewport for game-only look (windowed -game on Mac needs this set explicitly). */
+	void ApplyGameInputMode();
 	void RunSettingsSmoke();
 
 	TSharedPtr<SWidget> SettingsWidget;

@@ -175,9 +175,43 @@ void ABullyPlayerController::SetupInputComponent()
 	}
 }
 
+void ABullyPlayerController::ApplyGameInputMode()
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+	// Windowed -game on macOS does not grab the mouse from engine defaults, so look/clicks feel dead until the
+	// viewport is told to capture permanently and lock the OS cursor (recentred each frame -> continuous delta).
+	if (GEngine && GEngine->GameViewport)
+	{
+		GEngine->GameViewport->SetMouseCaptureMode(EMouseCaptureMode::CapturePermanently);
+		GEngine->GameViewport->SetMouseLockMode(EMouseLockMode::LockAlways);
+		GEngine->GameViewport->SetHideCursorDuringCapture(true);
+	}
+	FInputModeGameOnly Mode;
+	Mode.SetConsumeCaptureMouseDown(true);
+	SetInputMode(Mode);
+	SetShowMouseCursor(false);
+	if (FSlateApplication::IsInitialized() && GEngine && GEngine->GameViewport)
+	{
+		// Pull focus to the viewport so the first mouse move is captured without needing a click that macOS eats.
+		FSlateApplication::Get().SetUserFocusToGameViewport(0);
+	}
+}
+
 void ABullyPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Grab the mouse for look now, and once more next tick in case the game viewport is not live yet at BeginPlay.
+	ApplyGameInputMode();
+	if (UWorld* W = GetWorld())
+	{
+		FTimerHandle Tmp;
+		W->GetTimerManager().SetTimer(Tmp, this, &ABullyPlayerController::ApplyGameInputMode, 0.1f, false);
+	}
+
 	if (IsLocalController() && FParse::Param(FCommandLine::Get(), TEXT("BRSettingsSmoke")))
 	{
 		UE_LOG(LogBullySettings, Display, TEXT("BR_SETTINGS smoke armed (PC %s, pawn %s)"), *GetName(), GetPawn() ? *GetPawn()->GetName() : TEXT("none"));
@@ -262,12 +296,8 @@ void ABullyPlayerController::CloseSettingsMenu()
 	SetIgnoreLookInput(false);
 	SetIgnoreMoveInput(false);
 	FlushPressedKeys();
-	SetInputMode(FInputModeGameOnly());
-	SetShowMouseCursor(false);
-	if (FSlateApplication::IsInitialized())
-	{
-		FSlateApplication::Get().SetUserFocusToGameViewport(0);
-	}
+	// Re-grab and lock the mouse exactly as at startup, so look works again after the menu closes.
+	ApplyGameInputMode();
 	UE_LOG(LogBullySettings, Display, TEXT("BR_SETTINGS close: cursor=%d paused=%d inputMode=GameOnly lookIgnored=%d X=%.3f Y=%.3f invertY=%d"),
 		bShowMouseCursor ? 1 : 0, IsPaused() ? 1 : 0, IsLookInputIgnored() ? 1 : 0, GetLookX(), GetLookY(), GetInvertY() ? 1 : 0);
 }
