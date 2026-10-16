@@ -350,6 +350,12 @@
           "name": "combat_spawn_partner"
         },
         {
+          "type": "spawn_enemy",
+          "distance_cm": 300,
+          "health_floor": 5,
+          "player_invulnerable": true
+        },
+        {
           "type": "event",
           "name": "npc_crowd_gather"
         },

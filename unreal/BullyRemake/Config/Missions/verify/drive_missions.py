@@ -41,7 +41,9 @@ STEPS = {
     "leave_office": [(1.5, "Mission.Goto")],
     "exit_building": [(1.5, "Mission.Goto")],
     "cross_campus": [(1.5, "Mission.Goto")],
-    "fight_intro": [(1.2, "Combat.Invulnerable 1"), (1.5, "Combat.SpawnEnemy 5"), (3.0, "Combat.Status"), (3.5, "SNPC.Status")],
+    # The mission's fight_intro stage now spawns the sparring partner and sets Jimmy invulnerable itself
+    # (spawn_enemy action), so the driver only observes — it no longer issues Combat.SpawnEnemy / Combat.Invulnerable.
+    "fight_intro": [(3.0, "Combat.Status"), (3.5, "SNPC.Status")],
     "tut1_block_a": [(1.5, "Mission.Fire block_success")],
     "tut1_block_b": [(1.5, "Mission.Fire block_success")],
     "tut2_combo": [(1.5, "Mission.Fire combo_done")],
@@ -76,7 +78,7 @@ RE_EVENT = re.compile(r"BR_MISSION event '([^']+)'")
 st = {
     "n": 0, "t": 0.0, "world": None, "offset": 0, "buf": "", "mission": None, "stage_ids": {},
     "sched": [], "cur_stage": None, "cur_t0": 0.0, "fallback_done": set(), "fail_tested": False, "skipped": False,
-    "seq": [], "events": [], "completed": [], "fails": [], "forced": [], "log": [], "chained": False, "finish_at": None,
+    "seq": [], "events": [], "completed": [], "fails": [], "forced": [], "log": [], "chained": False, "chain_checked": False, "finish_at": None,
     "started": False, "result_written": False, "mission_start_seen": [],
 }
 
@@ -160,9 +162,11 @@ def schedule_stage(sid, retry):
 
 
 def on_mission_done(mid):
-    if MODE == "chain" and mid == "1_01" and not st["chained"]:
-        st["chained"] = True
-        st["sched"] = [(st["t"] + 1.0, "@chain")]
+    if MODE == "chain" and mid == "1_01" and not st["chain_checked"]:
+        # 1_01's on_complete now has a start_mission action, so the framework should auto-start 1_02.
+        # Wait a beat and verify; only fall back to a manual start if the framework did NOT chain.
+        st["chain_checked"] = True
+        st["sched"] = [(st["t"] + 3.5, "@chain_check")]
     else:
         st["finish_at"] = st["t"] + 3.0
 
@@ -251,9 +255,14 @@ def tick(dt):
         if due:
             st["sched"] = [s for s in st["sched"] if s[0] > st["t"]]
             for _, c in due:
-                if c == "@chain":
-                    say("CHAIN (driver-assisted): 1_01 finished, starting 1_02")
-                    cmd("Mission.Start 1_02")
+                if c == "@chain_check":
+                    if "1_02" in st["mission_start_seen"]:
+                        say("CHAIN (framework start_mission): 1_02 started on its own after 1_01")
+                        st["chained"] = False
+                    else:
+                        say("CHAIN (driver-assisted fallback): framework did not auto-start 1_02, starting it manually")
+                        st["chained"] = True
+                        cmd("Mission.Start 1_02")
                 else:
                     cmd(c)
         # fallback / stuck handling

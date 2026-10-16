@@ -1,6 +1,10 @@
 // OWNER: mission-fw
 #include "MissionSubsystem.h"
 
+#include "BullyCharacter.h"
+#include "BullyCombatComponent.h"
+#include "BullyCombatPawn.h"
+#include "BullyCombatTest.h"
 #include "BullyHUD.h"
 #include "Dom/JsonObject.h"
 #include "Engine/Engine.h"
@@ -142,6 +146,23 @@ namespace
 			{
 				A.Type = FMissionAction::EType::Teleport;
 				if (!ReadLocation(*O, D, A.Location)) { Err = TEXT("teleport: unknown point / no location"); return false; }
+			}
+			else if (Type == TEXT("start_mission"))
+			{
+				A.Type = FMissionAction::EType::StartMission;
+				if (!O->TryGetStringField(TEXT("mission"), A.Text) || A.Text.IsEmpty()) { Err = TEXT("start_mission: missing \"mission\" id"); return false; }
+				if (A.Seconds >= 5.f) { A.Seconds = 0.5f; }   // default: brief beat after the complete banner, unless overridden
+			}
+			else if (Type == TEXT("spawn_enemy"))
+			{
+				A.Type = FMissionAction::EType::SpawnEnemy;
+				double D2 = 0.0;
+				if (O->TryGetNumberField(TEXT("distance_cm"), D2)) { A.Dist = float(D2); }
+				if (O->TryGetNumberField(TEXT("health_floor"), D2)) { A.HealthFloor = float(D2); }
+				bool b = false;
+				if (O->TryGetBoolField(TEXT("player_invulnerable"), b)) { A.PlayerInvuln = b ? 1 : 0; }
+				if (O->TryGetBoolField(TEXT("gate_attack"), b)) { A.GateAttack = b ? 1 : 0; }
+				if (O->TryGetBoolField(TEXT("gate_block"), b)) { A.GateBlock = b ? 1 : 0; }
 			}
 			else { Err = FString::Printf(TEXT("unknown action type \"%s\""), *Type); return false; }
 			Out.Add(MoveTemp(A));
@@ -365,18 +386,30 @@ bool UMissionSubsystem::LoadMission(const FString& Id, FMissionDef& D, FString& 
 		if (!O.IsValid()) { Err = FString::Printf(TEXT("stage %d is not an object"), Index); return false; }
 		St.Id = O->TryGetStringField(TEXT("id"), S) ? FName(*S) : FName(*FString::Printf(TEXT("stage%d"), Index));
 		O->TryGetStringField(TEXT("objective"), St.Objective);
-		// blip
-		bool bBlipBool = true; FString BlipName; FVector BlipV;
-		if (const TArray<TSharedPtr<FJsonValue>>* BA = nullptr; O->TryGetArrayField(TEXT("blip"), BA) && BA->Num() >= 3)
+		// blip: branch on the JSON value's real type. (Do NOT probe with TryGetBoolField first: a string like
+		// "office_trigger" parses as bool false via FString::ToBool, which would silently drop the waypoint.)
+		//   array [x,y,z] -> explicit cm   |   false -> no blip, true -> auto   |   "point/trigger id" -> explicit   |   absent -> auto
+		if (TSharedPtr<FJsonValue> BlipVal = O->TryGetField(TEXT("blip")))
 		{
-			St.BlipMode = FMissionStage::EBlip::Explicit; St.BlipLocation = FVector((*BA)[0]->AsNumber(), (*BA)[1]->AsNumber(), (*BA)[2]->AsNumber());
-		}
-		else if (O->TryGetBoolField(TEXT("blip"), bBlipBool) && !bBlipBool) { St.BlipMode = FMissionStage::EBlip::None; }
-		else if (O->TryGetStringField(TEXT("blip"), BlipName))
-		{
-			FJsonObject Tmp; Tmp.SetStringField(TEXT("point"), BlipName);
-			if (!ReadLocation(Tmp, D, BlipV)) { Err = FString::Printf(TEXT("stage %d: blip \"%s\" is not a point/trigger"), Index, *BlipName); return false; }
-			St.BlipMode = FMissionStage::EBlip::Explicit; St.BlipLocation = BlipV;
+			if (BlipVal->Type == EJson::Array)
+			{
+				const TArray<TSharedPtr<FJsonValue>>& BA = BlipVal->AsArray();
+				if (BA.Num() < 3) { Err = FString::Printf(TEXT("stage %d: blip array needs 3 numbers"), Index); return false; }
+				St.BlipMode = FMissionStage::EBlip::Explicit;
+				St.BlipLocation = FVector(BA[0]->AsNumber(), BA[1]->AsNumber(), BA[2]->AsNumber());
+			}
+			else if (BlipVal->Type == EJson::Boolean)
+			{
+				St.BlipMode = BlipVal->AsBool() ? FMissionStage::EBlip::Auto : FMissionStage::EBlip::None;
+			}
+			else if (BlipVal->Type == EJson::String)
+			{
+				const FString BlipName = BlipVal->AsString();
+				FVector BlipV; FJsonObject Tmp; Tmp.SetStringField(TEXT("point"), BlipName);
+				if (!ReadLocation(Tmp, D, BlipV)) { Err = FString::Printf(TEXT("stage %d: blip \"%s\" is not a point/trigger"), Index, *BlipName); return false; }
+				St.BlipMode = FMissionStage::EBlip::Explicit; St.BlipLocation = BlipV;
+			}
+			else { Err = FString::Printf(TEXT("stage %d: blip must be an array, bool, or point/trigger name"), Index); return false; }
 		}
 		const FObj* CO = nullptr;
 		if (!O->TryGetObjectField(TEXT("complete"), CO)) { Err = FString::Printf(TEXT("stage %d (%s) has no \"complete\" condition"), Index, *St.Id.ToString()); return false; }
@@ -594,6 +627,30 @@ void UMissionSubsystem::RunActions(const TArray<FMissionAction>& Actions)
 		case FMissionAction::EType::ClearFlag: SetFlag(A.Name, false); break;
 		case FMissionAction::EType::Teleport: TeleportPlayer(A.Location, A.Yaw, true); break;
 		case FMissionAction::EType::Log: UE_LOG(LogBullyMission, Display, TEXT("BR_MISSION log: %s"), *A.Text); break;
+		case FMissionAction::EType::StartMission:
+			// Defer to Tick (via the auto-start slot) so we never re-enter the stage machine from inside an action.
+			if (UWorld* W = GetWorld())
+			{
+				PendingAutoStart = A.Text;
+				AutoStartAt = W->GetTimeSeconds() + FMath::Max(0.f, A.Seconds);
+				UE_LOG(LogBullyMission, Display, TEXT("BR_MISSION start_mission '%s' in %.1fs"), *A.Text, A.Seconds);
+			}
+			break;
+		case FMissionAction::EType::SpawnEnemy:
+		{
+			ABullyCharacter* Player = Cast<ABullyCharacter>(GetPlayerPawn());
+			if (!Player) { UE_LOG(LogBullyMission, Warning, TEXT("BR_MISSION spawn_enemy: no player pawn")); break; }
+			ABullyCombatPawn* E = UBullyCombatTest::SpawnEnemyInFront(GetWorld(), Player, A.Dist, A.HealthFloor);
+			if (E)
+			{
+				if (A.GateAttack >= 0) { E->bAttackAllowed = A.GateAttack != 0; }
+				if (A.GateBlock >= 0) { E->bBlockAllowed = A.GateBlock != 0; }
+			}
+			if (A.PlayerInvuln >= 0 && Player->GetCombat()) { Player->GetCombat()->bInvulnerable = A.PlayerInvuln != 0; }
+			UE_LOG(LogBullyMission, Display, TEXT("BR_MISSION spawn_enemy dist=%.0f floor=%.0f invuln=%d atk=%d blk=%d -> %s"),
+				A.Dist, A.HealthFloor, A.PlayerInvuln, A.GateAttack, A.GateBlock, E ? *E->GetName() : TEXT("FAILED"));
+			break;
+		}
 		}
 	}
 }

@@ -5,138 +5,374 @@
   "title": "Day One: The Dorm Court",
   "retry": "stage",
   "fail_delay": 3.0,
-  "start": { "location_cm": [-63000, 28450, 640], "yaw": 0 },
-
-  "points": {
-    "lobby":          { "location_cm": [-62860, 31070, 0] },
-    "fight_player":   { "location_cm": [27116, 10593, 740] },
-    "dorm_door":      { "location_cm": [27112, 12243, 792] },
-    "dorm_interior":  { "location_cm": [-50297, -31800, 3191] }
+  "start": {
+    "location_cm": [
+      -63000,
+      28450,
+      640
+    ],
+    "yaw": 0
   },
-
+  "points": {
+    "lobby": {
+      "location_cm": [
+        -62860,
+        31070,
+        0
+      ]
+    },
+    "fight_player": {
+      "location_cm": [
+        27116,
+        10593,
+        740
+      ]
+    },
+    "dorm_door": {
+      "location_cm": [
+        27112,
+        12243,
+        792
+      ]
+    },
+    "dorm_interior": {
+      "location_cm": [
+        -50297,
+        -31800,
+        3191
+      ]
+    }
+  },
   "triggers": [
-    { "id": "door_int",     "center_cm": [-62860, 32950, 100], "half_extent_cm": [150, 50, 250] },
-    { "id": "gary_trigger", "center_cm": [26839, 10247, 636],  "half_extent_cm": [1450, 564, 250] },
-    { "id": "dorm_door",    "center_cm": [27112, 12243, 792],  "half_extent_cm": [180, 200, 250] }
+    {
+      "id": "door_int",
+      "center_cm": [
+        -62860,
+        32950,
+        100
+      ],
+      "half_extent_cm": [
+        150,
+        50,
+        250
+      ]
+    },
+    {
+      "id": "gary_trigger",
+      "center_cm": [
+        26839,
+        10247,
+        636
+      ],
+      "half_extent_cm": [
+        1450,
+        564,
+        250
+      ]
+    },
+    {
+      "id": "dorm_door",
+      "center_cm": [
+        27112,
+        12243,
+        792
+      ],
+      "half_extent_cm": [
+        180,
+        200,
+        250
+      ]
+    }
   ],
-
   "stages": [
     {
       "id": "briefing",
       "objective": "Listen to your first instructions for the day.",
       "blip": false,
-      "complete": { "type": "timer", "seconds": 8 },
+      "complete": {
+        "type": "timer",
+        "seconds": 8
+      },
       "on_start": [
-        { "type": "banner", "text": "DAY ONE", "sub": "Your first morning at the academy", "seconds": 5 },
-        { "type": "hint", "text": "You have been given a room in the boys' dorm. Go and find it.", "seconds": 7 }
+        {
+          "type": "banner",
+          "text": "DAY ONE",
+          "sub": "Your first morning at the academy",
+          "seconds": 5
+        },
+        {
+          "type": "hint",
+          "text": "You have been given a room in the boys' dorm. Go and find it.",
+          "seconds": 7
+        }
       ]
     },
     {
       "id": "leave_office",
       "objective": "Head back down to the entrance hall.",
-      "complete": { "type": "reach_location", "point": "lobby", "radius_cm": 450, "z_tolerance_cm": 300 }
+      "complete": {
+        "type": "reach_location",
+        "point": "lobby",
+        "radius_cm": 450,
+        "z_tolerance_cm": 300
+      }
     },
     {
       "id": "exit_building",
       "objective": "Leave the main building.",
-      "complete": { "type": "trigger_enter", "trigger": "door_int" }
+      "complete": {
+        "type": "trigger_enter",
+        "trigger": "door_int"
+      }
     },
     {
       "id": "cross_campus",
       "objective": "Cross the grounds to the boys' dorm.",
-      "complete": { "type": "trigger_enter", "trigger": "gary_trigger" },
-      "on_start": [ { "type": "hint", "text": "The dorm is across the grounds, to the south.", "seconds": 6 } ]
+      "complete": {
+        "type": "trigger_enter",
+        "trigger": "gary_trigger"
+      },
+      "on_start": [
+        {
+          "type": "hint",
+          "text": "The dorm is across the grounds, to the south.",
+          "seconds": 6
+        }
+      ]
     },
     {
       "id": "fight_intro",
       "objective": "A crowd is forming in the dorm court.",
       "blip": false,
-      "complete": { "type": "timer", "seconds": 5 },
+      "complete": {
+        "type": "timer",
+        "seconds": 5
+      },
       "on_start": [
-        { "type": "teleport", "point": "fight_player", "yaw": 90 },
-        { "type": "set_flag", "name": "combat_ai_passive" },
-        { "type": "set_flag", "name": "combat_ai_noblock" },
-        { "type": "event", "name": "combat_spawn_partner" },
-        { "type": "event", "name": "npc_crowd_gather" },
-        { "type": "banner", "text": "TROUBLE IN THE COURT", "sub": "Someone wants to see what you are made of", "seconds": 4 }
+        {
+          "type": "teleport",
+          "point": "fight_player",
+          "yaw": 90
+        },
+        {
+          "type": "set_flag",
+          "name": "combat_ai_passive"
+        },
+        {
+          "type": "set_flag",
+          "name": "combat_ai_noblock"
+        },
+        {
+          "type": "event",
+          "name": "combat_spawn_partner"
+        },
+        {
+          "type": "spawn_enemy",
+          "distance_cm": 300,
+          "health_floor": 5,
+          "player_invulnerable": true
+        },
+        {
+          "type": "event",
+          "name": "npc_crowd_gather"
+        },
+        {
+          "type": "banner",
+          "text": "TROUBLE IN THE COURT",
+          "sub": "Someone wants to see what you are made of",
+          "seconds": 4
+        }
       ]
     },
     {
       "id": "tut1_block_a",
       "objective": "Practice step 1 of 7: block his punch (1 of 2).",
       "blip": false,
-      "complete": { "type": "event", "name": "block_success" },
-      "fail": { "type": "event", "name": "player_knocked_out" },
-      "checkpoint": { "point": "fight_player", "yaw": 90 },
+      "complete": {
+        "type": "event",
+        "name": "block_success"
+      },
+      "fail": {
+        "type": "event",
+        "name": "player_knocked_out"
+      },
+      "checkpoint": {
+        "point": "fight_player",
+        "yaw": 90
+      },
       "on_start": [
-        { "type": "clear_flag", "name": "combat_ai_passive" },
-        { "type": "set_flag", "name": "combat_ai_noblock" },
-        { "type": "hint", "text": "Hold Block (Q or LB) just as his punch comes in.", "seconds": 8 }
+        {
+          "type": "clear_flag",
+          "name": "combat_ai_passive"
+        },
+        {
+          "type": "set_flag",
+          "name": "combat_ai_noblock"
+        },
+        {
+          "type": "hint",
+          "text": "Hold Block (Q or LB) just as his punch comes in.",
+          "seconds": 8
+        }
       ]
     },
     {
       "id": "tut1_block_b",
       "objective": "Practice step 1 of 7: block his punch (2 of 2).",
       "blip": false,
-      "complete": { "type": "event", "name": "block_success" },
-      "fail": { "type": "event", "name": "player_knocked_out" },
-      "checkpoint": { "point": "fight_player", "yaw": 90 }
+      "complete": {
+        "type": "event",
+        "name": "block_success"
+      },
+      "fail": {
+        "type": "event",
+        "name": "player_knocked_out"
+      },
+      "checkpoint": {
+        "point": "fight_player",
+        "yaw": 90
+      }
     },
     {
       "id": "tut2_combo",
       "objective": "Practice step 2 of 7: land a three-punch combo.",
       "blip": false,
-      "complete": { "type": "event", "name": "combo_done" },
-      "fail": { "type": "event", "name": "player_knocked_out" },
-      "checkpoint": { "point": "fight_player", "yaw": 90 },
+      "complete": {
+        "type": "event",
+        "name": "combo_done"
+      },
+      "fail": {
+        "type": "event",
+        "name": "player_knocked_out"
+      },
+      "checkpoint": {
+        "point": "fight_player",
+        "yaw": 90
+      },
       "on_start": [
-        { "type": "set_flag", "name": "combat_ai_passive" },
-        { "type": "hint", "text": "Press Attack (left mouse or B) three times in a row. Hold the right mouse button or RT to lock on.", "seconds": 8 }
+        {
+          "type": "set_flag",
+          "name": "combat_ai_passive"
+        },
+        {
+          "type": "hint",
+          "text": "Press Attack (left mouse or B) three times in a row. Hold the right mouse button or RT to lock on.",
+          "seconds": 8
+        }
       ]
     },
     {
       "id": "tut3_grapple",
       "objective": "Practice step 3 of 7: grab him.",
       "blip": false,
-      "complete": { "type": "event", "name": "grapple_start" },
-      "fail": { "type": "event", "name": "player_knocked_out" },
-      "checkpoint": { "point": "fight_player", "yaw": 90 },
-      "on_start": [ { "type": "hint", "text": "Get close and press Grapple (F or RB) to take hold of him.", "seconds": 7 } ]
+      "complete": {
+        "type": "event",
+        "name": "grapple_start"
+      },
+      "fail": {
+        "type": "event",
+        "name": "player_knocked_out"
+      },
+      "checkpoint": {
+        "point": "fight_player",
+        "yaw": 90
+      },
+      "on_start": [
+        {
+          "type": "hint",
+          "text": "Get close and press Grapple (F or RB) to take hold of him.",
+          "seconds": 7
+        }
+      ]
     },
     {
       "id": "tut4_strikes",
       "objective": "Practice step 4 of 7: hit him three times while you hold him.",
       "blip": false,
-      "complete": { "type": "event", "name": "grapple_strikes_done" },
-      "fail": { "type": "event", "name": "player_knocked_out" },
-      "checkpoint": { "point": "fight_player", "yaw": 90 },
-      "on_start": [ { "type": "hint", "text": "While holding him, press Attack three times.", "seconds": 7 } ]
+      "complete": {
+        "type": "event",
+        "name": "grapple_strikes_done"
+      },
+      "fail": {
+        "type": "event",
+        "name": "player_knocked_out"
+      },
+      "checkpoint": {
+        "point": "fight_player",
+        "yaw": 90
+      },
+      "on_start": [
+        {
+          "type": "hint",
+          "text": "While holding him, press Attack three times.",
+          "seconds": 7
+        }
+      ]
     },
     {
       "id": "tut5_grapple_again",
       "objective": "Practice step 5 of 7: take hold of him again.",
       "blip": false,
-      "complete": { "type": "event", "name": "grapple_start" },
-      "fail": { "type": "event", "name": "player_knocked_out" },
-      "checkpoint": { "point": "fight_player", "yaw": 90 }
+      "complete": {
+        "type": "event",
+        "name": "grapple_start"
+      },
+      "fail": {
+        "type": "event",
+        "name": "player_knocked_out"
+      },
+      "checkpoint": {
+        "point": "fight_player",
+        "yaw": 90
+      }
     },
     {
       "id": "tut6_push",
       "objective": "Practice step 6 of 7: throw him to the ground.",
       "blip": false,
-      "complete": { "type": "event", "name": "grapple_done" },
-      "fail": { "type": "event", "name": "player_knocked_out" },
-      "checkpoint": { "point": "fight_player", "yaw": 90 },
-      "on_start": [ { "type": "hint", "text": "While holding him, press Grapple again to push him down.", "seconds": 7 } ]
+      "complete": {
+        "type": "event",
+        "name": "grapple_done"
+      },
+      "fail": {
+        "type": "event",
+        "name": "player_knocked_out"
+      },
+      "checkpoint": {
+        "point": "fight_player",
+        "yaw": 90
+      },
+      "on_start": [
+        {
+          "type": "hint",
+          "text": "While holding him, press Grapple again to push him down.",
+          "seconds": 7
+        }
+      ]
     },
     {
       "id": "tut7_ground_kick",
       "objective": "Practice step 7 of 7: kick him while he is down.",
       "blip": false,
-      "complete": { "type": "event", "name": "ground_kick" },
-      "fail": { "type": "event", "name": "player_knocked_out" },
-      "checkpoint": { "point": "fight_player", "yaw": 90 },
-      "on_start": [ { "type": "hint", "text": "Stand over him and press Attack to kick.", "seconds": 7 } ]
+      "complete": {
+        "type": "event",
+        "name": "ground_kick"
+      },
+      "fail": {
+        "type": "event",
+        "name": "player_knocked_out"
+      },
+      "checkpoint": {
+        "point": "fight_player",
+        "yaw": 90
+      },
+      "on_start": [
+        {
+          "type": "hint",
+          "text": "Stand over him and press Attack to kick.",
+          "seconds": 7
+        }
+      ]
     },
     {
       "id": "free_fight",
@@ -145,16 +381,38 @@
       "complete": {
         "type": "any",
         "conditions": [
-          { "type": "event", "name": "enemy_beaten" },
-          { "type": "event", "name": "enemy_knocked_out" }
+          {
+            "type": "event",
+            "name": "enemy_beaten"
+          },
+          {
+            "type": "event",
+            "name": "enemy_knocked_out"
+          }
         ]
       },
-      "fail": { "type": "event", "name": "player_knocked_out" },
-      "checkpoint": { "point": "fight_player", "yaw": 90 },
+      "fail": {
+        "type": "event",
+        "name": "player_knocked_out"
+      },
+      "checkpoint": {
+        "point": "fight_player",
+        "yaw": 90
+      },
       "on_start": [
-        { "type": "clear_flag", "name": "combat_ai_passive" },
-        { "type": "clear_flag", "name": "combat_ai_noblock" },
-        { "type": "hint", "text": "No more rules. Beat him.", "seconds": 5 }
+        {
+          "type": "clear_flag",
+          "name": "combat_ai_passive"
+        },
+        {
+          "type": "clear_flag",
+          "name": "combat_ai_noblock"
+        },
+        {
+          "type": "hint",
+          "text": "No more rules. Beat him.",
+          "seconds": 5
+        }
       ]
     },
     {
@@ -164,22 +422,46 @@
       "complete": {
         "type": "any",
         "conditions": [
-          { "type": "event", "name": "humiliation_done" },
-          { "type": "event", "name": "enemy_knocked_out", "latched": true }
+          {
+            "type": "event",
+            "name": "humiliation_done"
+          },
+          {
+            "type": "event",
+            "name": "enemy_knocked_out",
+            "latched": true
+          }
         ]
       },
-      "fail": { "type": "event", "name": "player_knocked_out" },
-      "checkpoint": { "point": "fight_player", "yaw": 90 },
+      "fail": {
+        "type": "event",
+        "name": "player_knocked_out"
+      },
+      "checkpoint": {
+        "point": "fight_player",
+        "yaw": 90
+      },
       "on_start": [
-        { "type": "set_flag", "name": "combat_ai_passive" },
-        { "type": "hint", "text": "Press Grapple (F or RB) on your beaten opponent.", "seconds": 7 }
+        {
+          "type": "set_flag",
+          "name": "combat_ai_passive"
+        },
+        {
+          "type": "hint",
+          "text": "Press Grapple (F or RB) on your beaten opponent.",
+          "seconds": 7
+        }
       ]
     },
     {
       "id": "fight_end",
       "objective": "Watch him go down.",
       "blip": false,
-      "complete": { "type": "event", "name": "enemy_knocked_out", "latched": true }
+      "complete": {
+        "type": "event",
+        "name": "enemy_knocked_out",
+        "latched": true
+      }
     },
     {
       "id": "crowd_leaves",
@@ -188,18 +470,39 @@
       "complete": {
         "type": "any",
         "conditions": [
-          { "type": "event", "name": "crowd_despawned", "latched": true },
-          { "type": "timer", "seconds": 30 }
+          {
+            "type": "event",
+            "name": "crowd_despawned",
+            "latched": true
+          },
+          {
+            "type": "timer",
+            "seconds": 30
+          }
         ]
       },
-      "on_complete": [ { "type": "event", "name": "npc_crowd_clear" } ]
+      "on_complete": [
+        {
+          "type": "event",
+          "name": "npc_crowd_clear"
+        }
+      ]
     },
     {
       "id": "staff_coming",
       "objective": "Someone with authority is heading this way.",
       "blip": false,
-      "complete": { "type": "timer", "seconds": 6 },
-      "on_start": [ { "type": "hint", "text": "Time to leave before you are caught in the middle of this.", "seconds": 6 } ]
+      "complete": {
+        "type": "timer",
+        "seconds": 6
+      },
+      "on_start": [
+        {
+          "type": "hint",
+          "text": "Time to leave before you are caught in the middle of this.",
+          "seconds": 6
+        }
+      ]
     },
     {
       "id": "to_dorm",
@@ -207,22 +510,48 @@
       "complete": {
         "type": "any",
         "conditions": [
-          { "type": "trigger_enter", "trigger": "dorm_door" },
-          { "type": "reach_location", "point": "dorm_door", "radius_cm": 350, "z_tolerance_cm": 400 }
+          {
+            "type": "trigger_enter",
+            "trigger": "dorm_door"
+          },
+          {
+            "type": "reach_location",
+            "point": "dorm_door",
+            "radius_cm": 350,
+            "z_tolerance_cm": 400
+          }
         ]
       },
-      "on_complete": [ { "type": "teleport", "point": "dorm_interior", "yaw": 0 } ]
+      "on_complete": [
+        {
+          "type": "teleport",
+          "point": "dorm_interior",
+          "yaw": 0
+        }
+      ]
     },
     {
       "id": "end_card",
       "objective": "You made it to your room.",
       "blip": false,
-      "complete": { "type": "timer", "seconds": 9 },
+      "complete": {
+        "type": "timer",
+        "seconds": 9
+      },
       "on_start": [
-        { "type": "banner", "text": "END OF DAY ONE", "sub": "The rest of the term is still ahead of you", "seconds": 8 }
+        {
+          "type": "banner",
+          "text": "END OF DAY ONE",
+          "sub": "The rest of the term is still ahead of you",
+          "seconds": 8
+        }
       ]
     }
   ],
-
-  "on_complete": [ { "type": "log", "text": "1_02 complete: end card shown" } ]
+  "on_complete": [
+    {
+      "type": "log",
+      "text": "1_02 complete: end card shown"
+    }
+  ]
 }

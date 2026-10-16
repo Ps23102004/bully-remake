@@ -58,13 +58,20 @@ struct FMissionCondition
 
 struct FMissionAction
 {
-	enum class EType : uint8 { Hint, Banner, Event, SetFlag, ClearFlag, Teleport, Log };
+	enum class EType : uint8 { Hint, Banner, Event, SetFlag, ClearFlag, Teleport, Log, StartMission, SpawnEnemy };
 	EType Type = EType::Log;
 	FString Text, Sub;
 	FName Name;
 	float Seconds = 5.f;
 	FVector Location = FVector::ZeroVector;
 	float Yaw = 0.f;
+	// start_mission: Text = mission id, Seconds = delay before it starts (so the complete banner can show).
+	// spawn_enemy: spawn a sparring partner in front of the player and (optionally) set the tutorial gates/invuln.
+	float Dist = 300.f;          // spawn distance in front, cm
+	float HealthFloor = 0.f;     // >0 = beaten + humiliation instead of KO
+	int32 PlayerInvuln = -1;     // -1 leave as-is, 0 clear, 1 set Jimmy invulnerable
+	int32 GateAttack = -1;       // -1 leave, 0/1 allow the spawned enemy to attack
+	int32 GateBlock = -1;        // -1 leave, 0/1 allow the spawned enemy to block
 };
 
 struct FMissionStage
