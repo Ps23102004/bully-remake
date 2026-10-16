@@ -1,0 +1,83 @@
+{
+  "_format": "bully-remake.mission/1",
+  "_note": "Day One, part 1 of 2: arrive at the front gates, get past the group of bullies in the walkway, cross the grounds, go into the main building and up to the principal's office. Beats follow docs/re-notes/opening-slice-recon.md A1-A7; ALL text here is our own wording. Coordinates are UE cm (game metres x100, y mirrored); named points that are not in this file come from imported/triggers/day_one.json via the NPC scripts, but the mission loader does not read that file's layout, so every point/trigger the stages use is inlined here. NPC cues (Config/NPCScripts/day_one.json): npc_gauntlet_spawn / npc_gauntlet_ambient / npc_gauntlet_clear; the gauntlet emits gauntlet_complete. The stairs to the office are being fixed by the traversal builder (slice-stairs): stage 6 is authored for the real route and also accepts the office trigger. Chain: on_complete fires mission_chain_1_02; there is no data-driven start_mission action yet, so the next mission is started with Mission.Start 1_02 or by using the combined day_one mission (see day_one.json).",
+  "id": "1_01",
+  "title": "Day One: Arrival",
+  "retry": "stage",
+  "fail_delay": 2.0,
+  "start": { "location_cm": [29836, 7223, 700], "yaw": 180 },
+
+  "points": {
+    "gauntlet_clear":    { "location_cm": [26800, 7300, 607] },
+    "courtyard_approach": { "location_cm": [21470, 7330, 1000] },
+    "lobby":             { "location_cm": [-62860, 31070, 0] },
+    "office_approach":   { "location_cm": [-63300, 29300, 550] }
+  },
+
+  "triggers": [
+    { "id": "1_01_BullyTrig",  "center_cm": [28693, 7634, 614],   "half_extent_cm": [290, 1670, 250] },
+    { "id": "main_door",       "center_cm": [21070, 7330, 1000],  "half_extent_cm": [60, 160, 250] },
+    { "id": "1_01_PrincOffice", "center_cm": [-63534, 28984, 686], "half_extent_cm": [429, 328, 200] }
+  ],
+
+  "stages": [
+    {
+      "id": "walk_in",
+      "objective": "Walk across the grounds toward the group waiting in the walkway.",
+      "complete": { "type": "trigger_enter", "trigger": "1_01_BullyTrig" },
+      "on_start": [
+        { "type": "event", "name": "npc_gauntlet_spawn" },
+        { "type": "hint", "text": "Move with WASD or the left stick. Hold Shift to sprint.", "seconds": 7 }
+      ]
+    },
+    {
+      "id": "get_past_bullies",
+      "objective": "Get past the bullies blocking the walkway.",
+      "complete": {
+        "type": "any",
+        "conditions": [
+          { "type": "event", "name": "gauntlet_complete", "latched": true },
+          { "type": "reach_location", "point": "gauntlet_clear", "radius_cm": 500, "z_tolerance_cm": 500 }
+        ]
+      },
+      "on_start": [ { "type": "hint", "text": "They will push you around. You can just keep walking.", "seconds": 6 } ]
+    },
+    {
+      "id": "cross_courtyard",
+      "objective": "Cross the grounds to the main building.",
+      "complete": { "type": "reach_location", "point": "courtyard_approach", "radius_cm": 450, "z_tolerance_cm": 450 },
+      "on_start": [ { "type": "event", "name": "npc_gauntlet_ambient" } ]
+    },
+    {
+      "id": "use_door",
+      "objective": "Go in through the main door.",
+      "complete": { "type": "trigger_enter", "trigger": "main_door" },
+      "on_complete": [
+        { "type": "event", "name": "npc_gauntlet_clear" },
+        { "type": "event", "name": "entered_school" }
+      ]
+    },
+    {
+      "id": "reach_lobby",
+      "objective": "Walk into the entrance hall.",
+      "complete": { "type": "reach_location", "point": "lobby", "radius_cm": 450, "z_tolerance_cm": 300 }
+    },
+    {
+      "id": "go_upstairs",
+      "objective": "Head upstairs to the principal's office.",
+      "complete": {
+        "type": "any",
+        "conditions": [
+          { "type": "trigger_enter", "trigger": "1_01_PrincOffice" },
+          { "type": "reach_location", "point": "office_approach", "radius_cm": 600, "z_tolerance_cm": 250 }
+        ]
+      },
+      "checkpoint": { "point": "lobby", "yaw": -90 }
+    }
+  ],
+
+  "on_complete": [
+    { "type": "log", "text": "1_01 complete: next mission is 1_02 (start with Mission.Start 1_02 or play the combined day_one mission)" },
+    { "type": "event", "name": "mission_chain_1_02" }
+  ]
+}

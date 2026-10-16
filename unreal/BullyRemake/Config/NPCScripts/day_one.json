@@ -1,6 +1,6 @@
 {
  "_format": "bully-remake.npc-script/1",
- "_note": "Scripted NPCs for the Day One opening slice (our own data; docs/re-notes/scripted-npcs.md has the schema). Gauntlet = mission 1_01 beat A2, crowd = mission 1_02 beats B5-B8 (opening-slice-recon.md). All coordinates UE cm (game metres x 100, y mirrored); named points come from imported/triggers/day_one.json (python3 -m tools.importers trigger). Peds are the already-imported students; swap `ped` for GN_Bully01.. after `python3 -m tools.importers ped GN_Bully01 ...` + tools/ue/run_import_npc.sh. A mission drives this by firing the events named in spawn_on / beats[].on (e.g. an event action in a stage's on_start) or just by existing: mission_start:<id> and stage_begin:<id>:<stage> are synthesized from the stage machine.",
+ "_note": "Scripted NPCs for the Day One opening slice (our own data; docs/re-notes/scripted-npcs.md has the schema). Gauntlet = mission 1_01 beat A2, crowd = mission 1_02 beats B5-B8 (opening-slice-recon.md). All coordinates UE cm (game metres x 100, y mirrored); named points come from imported/triggers/day_one.json (python3 -m tools.importers trigger). Gauntlet = the three first-day bullies (GN_Bully01/02/04); crowd = the four bully peds GN_Bully01-04 plus two students (the sparring partner itself is GN_Bully05, spawned by the combat system). Peds imported with tools/ue/run_import_npc.sh --peds GN_Bully01,GN_Bully02,GN_Bully03,GN_Bully04,GN_Bully05. Missions 1_01 / 1_02 / day_one fire the spawn cues explicitly (npc_gauntlet_spawn, npc_gauntlet_ambient, npc_gauntlet_clear, npc_crowd_gather, npc_crowd_clear); the old mission_start:1_01 auto-spawn was dropped so the combined day_one mission and the standalone 1_01 behave the same. A mission drives this by firing the events named in spawn_on / beats[].on (e.g. an event action in a stage's on_start) or just by existing: mission_start:<id> and stage_begin:<id>:<stage> are synthesized from the stage machine.",
  "trigger_file": "imported/triggers/day_one.json",
  "points": {
   "fight_center": [
@@ -156,8 +156,7 @@
    "_note": "1_01 A2: three bullies stand talking in a knot ~20 m ahead of the start; when Jimmy gets near trigger 1_01_BullyTrig they face him and run to the flanking points 1_01_BegginingBullies; the middle one blocks the way (shuffles sideways across the line post -> school door, within 3.8 m of his post, to stay in front of Jimmy) and shoves him, then all step aside. No combat; nothing can fail. Release: 2 shoves, 9 s engaged, or Jimmy gets past x=28300. Events emitted: gauntlet_spawned, gauntlet_engaged, gauntlet_shove (each), gauntlet_released, gauntlet_complete, gauntlet_ambient.",
    "event_prefix": "gauntlet",
    "spawn_on": [
-    "event:npc_gauntlet_spawn",
-    "mission_start:1_01"
+    "event:npc_gauntlet_spawn"
    ],
    "despawn_on": [
     "event:npc_gauntlet_clear",
@@ -166,7 +165,7 @@
    "npcs": [
     {
      "id": "bully_a",
-     "ped": "GN_Boy01",
+     "ped": "GN_Bully02",
      "footsteps": "shoe",
      "spawn": {
       "point": "1_01_CheerPoints",
@@ -179,7 +178,7 @@
     },
     {
      "id": "bully_b",
-     "ped": "GN_Greekboy",
+     "ped": "GN_Bully01",
      "footsteps": "shoe",
      "spawn": {
       "point": "1_01_CheerPoints",
@@ -192,7 +191,7 @@
     },
     {
      "id": "bully_c",
-     "ped": "GN_Boy02",
+     "ped": "GN_Bully04",
      "footsteps": "shoe",
      "spawn": {
       "point": "1_01_CheerPoints",
@@ -348,7 +347,7 @@
    "npcs": [
     {
      "id": "crowd_1",
-     "ped": "GN_Boy01",
+     "ped": "GN_Bully01",
      "footsteps": "shoe",
      "spawn": {
       "point": "1_02_BDormBullies",
@@ -357,8 +356,8 @@
     },
     {
      "id": "crowd_2",
-     "ped": "GN_Asiangirl",
-     "footsteps": "female",
+     "ped": "GN_Bully02",
+     "footsteps": "shoe",
      "spawn": {
       "point": "1_02_BDormBullies",
       "index": 4
@@ -366,7 +365,7 @@
     },
     {
      "id": "crowd_3",
-     "ped": "GN_Greekboy",
+     "ped": "GN_Bully03",
      "footsteps": "shoe",
      "spawn": {
       "point": "crowd_start",
@@ -375,7 +374,7 @@
     },
     {
      "id": "crowd_4",
-     "ped": "NDH3_Bucky",
+     "ped": "GN_Bully04",
      "footsteps": "shoe",
      "spawn": {
       "point": "crowd_start",
