@@ -14,6 +14,7 @@ class USoundBase;
 class USoundAttenuation;
 class UBullyFootstepComponent;
 class AAmbientWalker;
+class ACharacter;
 
 /** Holds the looping outdoor ambience (wind + birds decoded from the game's Wind.SEA / Birds.SEA) as audio components. */
 UCLASS()
@@ -46,6 +47,9 @@ public:
 
 	const TArray<TWeakObjectPtr<AAmbientWalker>>& GetWalkers() const { return Walkers; }
 
+	/** Gives a character (a scripted NPC) the same footstep component the ambient walkers get. Kind: "shoe" | "female". */
+	void AttachFootsteps(ACharacter* Character, const FString& Kind, const FString& Tag);
+
 private:
 	void Spawn(UWorld& World);
 	void ValidateLoop(UWorld& World, const FString& Id, const TArray<FVector>& Pts);
@@ -59,6 +63,8 @@ private:
 	USoundBase* LoadGameSound(const FString& Bank, const FString& Name) const;
 
 	TArray<TWeakObjectPtr<AAmbientWalker>> Walkers;
+	TMap<FString, TArray<TObjectPtr<USoundBase>>> StepSets;   // footsteps config key -> sounds (kept for AttachFootsteps)
+	UPROPERTY(Transient) TArray<TObjectPtr<USoundBase>> AllStepSounds;   // GC anchor for StepSets
 	TWeakObjectPtr<AAmbientSoundActor> AmbientActor;
 	TArray<TObjectPtr<USoundBase>> PlayerSteps;
 	FTimerHandle PlayerAttachTimer;

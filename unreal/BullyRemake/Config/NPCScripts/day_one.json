@@ -1,0 +1,504 @@
+{
+ "_format": "bully-remake.npc-script/1",
+ "_note": "Scripted NPCs for the Day One opening slice (our own data; docs/re-notes/scripted-npcs.md has the schema). Gauntlet = mission 1_01 beat A2, crowd = mission 1_02 beats B5-B8 (opening-slice-recon.md). All coordinates UE cm (game metres x 100, y mirrored); named points come from imported/triggers/day_one.json (python3 -m tools.importers trigger). Peds are the already-imported students; swap `ped` for GN_Bully01.. after `python3 -m tools.importers ped GN_Bully01 ...` + tools/ue/run_import_npc.sh. A mission drives this by firing the events named in spawn_on / beats[].on (e.g. an event action in a stage's on_start) or just by existing: mission_start:<id> and stage_begin:<id>:<stage> are synthesized from the stage machine.",
+ "trigger_file": "imported/triggers/day_one.json",
+ "points": {
+  "fight_center": [
+   27112,
+   10920,
+   640
+  ],
+  "_fight_center_note": "midpoint of 1_02_PlayerNISLocs[0] (Jimmy) and [2] (sparring partner): the dorm-court arena",
+  "crowd_start": [
+   [
+    24500,
+    7000,
+    600
+   ],
+   [
+    24500,
+    7300,
+    600
+   ],
+   [
+    24800,
+    7000,
+    600
+   ],
+   [
+    24800,
+    7300,
+    600
+   ]
+  ],
+  "crowd_entry": [
+   [
+    27000,
+    7150,
+    600
+   ],
+   [
+    27000,
+    9700,
+    600
+   ],
+   [
+    27100,
+    10150,
+    640
+   ],
+   [
+    27100,
+    10350,
+    640
+   ]
+  ],
+  "crowd_exit": [
+   [
+    27100,
+    10350,
+    640
+   ],
+   [
+    27100,
+    10150,
+    640
+   ],
+   [
+    27000,
+    9700,
+    600
+   ],
+   [
+    27000,
+    8200,
+    600
+   ]
+  ],
+  "_crowd_note": "hand-authored from the ambient walkability probe (tools/ue/run_ambient_probe.sh): the dorm court is fenced along y~10100-10200 with a ~4 m opening at x 26900-27300 (where 1_02Gate goes); crowd_entry/exit run along the validated 'central_walk' (y=7150) and 'crossing' (x=27000) ambient loops, then through that opening",
+  "gauntlet_exit": [
+   [
+    29000,
+    6700,
+    600
+   ],
+   [
+    29400,
+    7900,
+    600
+   ],
+   [
+    29700,
+    6700,
+    600
+   ]
+  ],
+  "crowd_gate": [
+   [
+    27100,
+    10150,
+    640
+   ],
+   [
+    27100,
+    10350,
+    640
+   ]
+  ]
+ },
+ "gestures": {
+  "_note": "alias -> candidate clips from C_Player (first that is imported for the ped wins; neighbours rotate through the list for variety). tools/ue/run_import_npc.sh imports every clip named here.",
+  "talk": [
+   "PLAYER_TALKING0",
+   "PLAYER_TALKING1"
+  ],
+  "taunt": [
+   "P_TAUNT_01",
+   "P_TAUNT_02",
+   "P_TAUNT_03"
+  ],
+  "shove": [
+   "SHOVE2HAND"
+  ],
+  "menace": [
+   "NPC_ANGRY",
+   "ANGRY"
+  ],
+  "laugh": [
+   "LAUGH_01",
+   "LAUGH_02"
+  ],
+  "cheer": [
+   "VICTORY01",
+   "VICTORY02",
+   "HAPPY",
+   "EXP_WAVE"
+  ],
+  "react": [
+   "SURPRISED",
+   "NPC_SURPRISE",
+   "REACT_DISGUSTED"
+  ],
+  "idle": [
+   "NPC_NEUTRAL",
+   "IDLE"
+  ],
+  "point": [
+   "EXP_FINGER"
+  ],
+  "gloat": [
+   "FIGHT_VICTORY"
+  ]
+ },
+ "groups": [
+  {
+   "id": "gauntlet_1_01",
+   "_note": "1_01 A2: three bullies stand talking in a knot ~20 m ahead of the start; when Jimmy gets near trigger 1_01_BullyTrig they face him and run to the flanking points 1_01_BegginingBullies; the middle one blocks the way (shuffles sideways across the line post -> school door, within 3.8 m of his post, to stay in front of Jimmy) and shoves him, then all step aside. No combat; nothing can fail. Release: 2 shoves, 9 s engaged, or Jimmy gets past x=28300. Events emitted: gauntlet_spawned, gauntlet_engaged, gauntlet_shove (each), gauntlet_released, gauntlet_complete, gauntlet_ambient.",
+   "event_prefix": "gauntlet",
+   "spawn_on": [
+    "event:npc_gauntlet_spawn",
+    "mission_start:1_01"
+   ],
+   "despawn_on": [
+    "event:npc_gauntlet_clear",
+    "mission_end:1_01:*"
+   ],
+   "npcs": [
+    {
+     "id": "bully_a",
+     "ped": "GN_Boy01",
+     "footsteps": "shoe",
+     "spawn": {
+      "point": "1_01_CheerPoints",
+      "index": 0
+     },
+     "face": {
+      "point": "1_01_CheerPoints",
+      "index": 1
+     }
+    },
+    {
+     "id": "bully_b",
+     "ped": "GN_Greekboy",
+     "footsteps": "shoe",
+     "spawn": {
+      "point": "1_01_CheerPoints",
+      "index": 1
+     },
+     "face": {
+      "point": "1_01_CheerPoints",
+      "index": 0
+     }
+    },
+    {
+     "id": "bully_c",
+     "ped": "GN_Boy02",
+     "footsteps": "shoe",
+     "spawn": {
+      "point": "1_01_CheerPoints",
+      "index": 2
+     },
+     "face": {
+      "point": "1_01_CheerPoints",
+      "index": 1
+     }
+    }
+   ],
+   "beats": [
+    {
+     "id": "talk_knot",
+     "on": [
+      "spawn"
+     ],
+     "steps": [
+      {
+       "cmd": "gesture",
+       "gesture": "talk",
+       "loop": true,
+       "jitter": 0.8
+      }
+     ]
+    },
+    {
+     "id": "engage",
+     "on": [
+      "event:trigger_enter:1_01_BullyTrig",
+      "near:1_01_BullyTrig:1100"
+     ],
+     "interrupt": true,
+     "emit": [],
+     "steps": [
+      {
+       "cmd": "face",
+       "target": "player",
+       "track": true,
+       "jitter": 0.4
+      },
+      {
+       "cmd": "goto",
+       "to": {
+        "point": "1_01_BegginingBullies",
+        "index": "$i"
+       },
+       "gait": "run",
+       "radius_cm": 60
+      },
+      {
+       "npc": "bully_b",
+       "cmd": "block",
+       "engage_radius_cm": 450,
+       "aside_cm": 230,
+       "until": [
+        "shoves:2",
+        "timer:9",
+        "x<28300",
+        "timer_start:60"
+       ],
+       "engage_gesture": "taunt",
+       "hold_gesture": "menace",
+       "shove": {
+        "gesture": "shove",
+        "delay": 0.3,
+        "interval": 1.8,
+        "radius_cm": 210,
+        "speed_cm_s": 800,
+        "contact": 0.45
+       },
+       "guard": "1_01_School_Entrance",
+       "max_lateral_cm": 380,
+       "body_radius_cm": 50
+      },
+      {
+       "npc": "bully_a,bully_c",
+       "cmd": "block",
+       "engage_radius_cm": 600,
+       "aside_cm": 150,
+       "until": [
+        "event:gauntlet_released",
+        "timer_start:60"
+       ],
+       "engage_gesture": "taunt",
+       "hold_gesture": "menace",
+       "body_radius_cm": 40
+      }
+     ]
+    },
+    {
+     "id": "jeer",
+     "on": [
+      "beat_done:engage"
+     ],
+     "emit": [
+      "gauntlet_complete"
+     ],
+     "steps": [
+      {
+       "cmd": "gesture",
+       "gesture": "laugh",
+       "stagger": 0.3
+      },
+      {
+       "cmd": "face",
+       "target": "player",
+       "track": true
+      },
+      {
+       "cmd": "gesture",
+       "gesture": "idle",
+       "loop": true
+      }
+     ]
+    },
+    {
+     "id": "go_ambient",
+     "on": [
+      "event:npc_gauntlet_ambient"
+     ],
+     "interrupt": true,
+     "emit": [
+      "gauntlet_ambient"
+     ],
+     "steps": [
+      {
+       "cmd": "disperse",
+       "to": {
+        "point": "gauntlet_exit",
+        "index": "$i"
+       },
+       "gait": "walk",
+       "then": "ambient",
+       "radius_cm": 120,
+       "timeout": 25
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "crowd_1_02",
+   "_note": "1_02 B5-B8: on the fight cue six students converge on a ring around the dorm-court arena (fight_center), face it and cheer; when the fight ends (the combat builder's enemy_knocked_out, or npc_crowd_disperse) they react, then leave through the court opening and despawn. Events emitted: crowd_spawned, crowd_gathered, crowd_cheering, crowd_dispersed, crowd_despawned.",
+   "event_prefix": "crowd",
+   "spawn_on": [
+    "event:npc_crowd_gather"
+   ],
+   "despawn_on": [
+    "event:npc_crowd_clear",
+    "mission_end:1_02:*"
+   ],
+   "npcs": [
+    {
+     "id": "crowd_1",
+     "ped": "GN_Boy01",
+     "footsteps": "shoe",
+     "spawn": {
+      "point": "1_02_BDormBullies",
+      "index": 3
+     }
+    },
+    {
+     "id": "crowd_2",
+     "ped": "GN_Asiangirl",
+     "footsteps": "female",
+     "spawn": {
+      "point": "1_02_BDormBullies",
+      "index": 4
+     }
+    },
+    {
+     "id": "crowd_3",
+     "ped": "GN_Greekboy",
+     "footsteps": "shoe",
+     "spawn": {
+      "point": "crowd_start",
+      "index": 0
+     }
+    },
+    {
+     "id": "crowd_4",
+     "ped": "NDH3_Bucky",
+     "footsteps": "shoe",
+     "spawn": {
+      "point": "crowd_start",
+      "index": 1
+     }
+    },
+    {
+     "id": "crowd_5",
+     "ped": "GN_Boy02",
+     "footsteps": "shoe",
+     "spawn": {
+      "point": "crowd_start",
+      "index": 2
+     }
+    },
+    {
+     "id": "crowd_6",
+     "ped": "GN_Asiangirl",
+     "footsteps": "female",
+     "spawn": {
+      "point": "crowd_start",
+      "index": 3
+     }
+    }
+   ],
+   "beats": [
+    {
+     "id": "gather",
+     "on": [
+      "spawn"
+     ],
+     "emit": [
+      "crowd_gathered"
+     ],
+     "steps": [
+      {
+       "npc": "crowd_1,crowd_2",
+       "cmd": "follow_path",
+       "path": {
+        "path": "crowd_gate"
+       },
+       "gait": "run",
+       "radius_cm": 90,
+       "jitter": 1.0
+      },
+      {
+       "npc": "crowd_3,crowd_4,crowd_5,crowd_6",
+       "cmd": "follow_path",
+       "path": {
+        "path": "crowd_entry"
+       },
+       "gait": "run",
+       "radius_cm": 90,
+       "jitter": 1.2
+      },
+      {
+       "cmd": "goto",
+       "to": {
+        "ring": {
+         "center": "fight_center",
+         "radius_cm": 700,
+         "start_deg": 0,
+         "arc_deg": 360
+        }
+       },
+       "gait": "run",
+       "radius_cm": 80,
+       "jitter": 1.0
+      },
+      {
+       "cmd": "face",
+       "target": "fight_center",
+       "track": true
+      }
+     ]
+    },
+    {
+     "id": "cheer",
+     "on": [
+      "beat_done:gather"
+     ],
+     "emit": [
+      "crowd_cheering"
+     ],
+     "steps": [
+      {
+       "cmd": "gesture",
+       "gesture": "cheer",
+       "loop": true,
+       "jitter": 1.0
+      }
+     ]
+    },
+    {
+     "id": "disperse",
+     "on": [
+      "event:enemy_knocked_out",
+      "event:npc_crowd_disperse"
+     ],
+     "interrupt": true,
+     "emit": [
+      "crowd_dispersed"
+     ],
+     "steps": [
+      {
+       "cmd": "gesture",
+       "gesture": "react",
+       "jitter": 0.6
+      },
+      {
+       "cmd": "disperse",
+       "to": {
+        "path": "crowd_exit"
+       },
+       "gait": "walk",
+       "then": "despawn",
+       "radius_cm": 150,
+       "timeout": 40,
+       "jitter": 0.8
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
