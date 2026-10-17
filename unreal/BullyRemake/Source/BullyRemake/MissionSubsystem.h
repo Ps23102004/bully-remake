@@ -36,6 +36,8 @@
 //               { "type": "fade", "out": 0.6, "hold": 0.5, "in": 0.9,              // cinematic fade-to-black and back;
 //                                 "point": "name" | "location_cm": [..], "yaw": 0 } // with a point, teleport at full black
 //               { "type": "reward", "money": 75, "respect": 15, "text": "..." }     // pay the persistent wallet + toast
+//               { "type": "letterbox", "on": true }                                 // slide cinematic bars in (true) / out (false)
+//               { "type": "say", "speaker": "PREFECT", "text": "...", "seconds": 4 } // one cutscene dialogue line at the bottom
 #pragma once
 
 #include "CoreMinimal.h"
@@ -64,7 +66,7 @@ struct FMissionCondition
 
 struct FMissionAction
 {
-	enum class EType : uint8 { Hint, Banner, Event, SetFlag, ClearFlag, Teleport, Log, StartMission, SpawnEnemy, Fade, Reward };
+	enum class EType : uint8 { Hint, Banner, Event, SetFlag, ClearFlag, Teleport, Log, StartMission, SpawnEnemy, Fade, Reward, Letterbox, Say };
 	EType Type = EType::Log;
 	FString Text, Sub;
 	FName Name;
@@ -84,6 +86,8 @@ struct FMissionAction
 	bool bFadeTeleport = false;
 	// reward: grant to the persistent wallet (UBullyProgressSubsystem) and toast it. Text = optional custom banner line.
 	int32 Money = 0, Respect = 0;
+	// letterbox: slide the cinematic bars in (bOn) or out. say: Sub = speaker label, Text = line, Seconds = how long it reads.
+	bool bOn = true;
 };
 
 struct FMissionStage

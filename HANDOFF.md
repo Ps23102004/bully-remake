@@ -1,6 +1,6 @@
 # HANDOFF — bully-remake
 
-**Updated:** 2026-10-15 · **Branch:** `phase0` (checkout `~/bully-remake`) · **Machine:** midirstudio (M3 Ultra Mac Studio)
+**Updated:** 2026-10-17 · **Branch:** `phase0` (= `origin/main`; checkout `~/bully-remake`) · **Machine:** midirstudio (M3 Ultra Mac Studio)
 
 ## Verified state
 
@@ -95,3 +95,29 @@ Goal: ~10-min playable remaster of the game's opening (missions 1_01 + 1_02) to 
 **Also pending:** combat juice (hit SFX/effects/camera shake — deferred to owner's feel-tuning pass); Jimmy's start outfit; a VISUAL verification render (never done for the mission HUD/combat/gauntlet — logs only so far). Best done together with closing the 5 gaps.
 
 **Next session (on owner's go):** close the 5 C++ gaps → materialize content + visual render → rebuild + relaunch for owner playtest + combat feel-tuning. Nothing of main merged; phase0 is the slice branch.
+
+## Phase A + B + arrival cutscene (2026-10-17, merged to main)
+
+Branch `phase0` == `origin/main` (both at `b30aa5f` before this session's cutscene commit). Supersedes the "5 gaps NOT done / nothing merged" note above.
+
+**Phase A — all five Phase-1 gaps closed, headless-verified, merged:**
+1. Data boot mission (`UPROPERTY(Config) BootMission` in `DefaultGame.ini`; `-BRMission=` overrides).
+2. `start_mission` chain action (1_01 → 1_02 auto-chains; fixed a latent `day_one` self-chain bug — `build_day_one.py` now strips `start_mission` when inlining).
+3. `spawn_enemy` action (self-spawning sparring partner + invuln/attack/block gates) → schoolyard fight starts on its own.
+4. `fade` cinematic action (fade-to-black → optional teleport at full black → fade-in) via `PlayerCameraManager`; dorm epilogue uses it.
+5. `blip` parse fix (string/array/false now parse; waypoint restored).
+Verified: `day_one` PASS 26/26 self-contained **and** as the chained pair, incl. the deliberate fail/retry.
+
+**Phase B — objective → reward loop + an original side mission, merged:**
+- `UBullyProgressSubsystem` (GameInstance) persistent wallet (money + respect); `reward` action pays it; top-right HUD wallet readout. Console: `Progress.Status/Money/Respect/Reset`.
+- `Config/Missions/side_errand.json` "Campus Courier" (5 stages, original wording, academy courtyard). `tools/ue/run_mission_smoke.sh side_errand` → PASS 5/5, pays $75 + 15 respect.
+- Town geometry NOT imported (only academy grounds/interiors) → open-world roam still needs an original-world-data import pass (owner-attended).
+
+**Arrival cutscene (this session, in-engine, no video gen):**
+- `Config/Missions/arrival.json` — kid dropped at the gates, faculty stand-in walks up and lays down rules, chains into `day_one`. Original dialogue + original characters.
+- Two new reusable mission primitives: `letterbox` (cinematic bars) + `say` (one dialogue line, speaker + text). HUD: eased letterbox bars + bottom dialogue box (`BullyHUD`).
+- Faculty figure = existing `spawn_enemy` as a silent non-hostile stand-in (no friendly-NPC/branching-dialogue system yet).
+- `CompleteMission` now suppresses the "MISSION COMPLETE" end-card when a mission chains (its `on_complete` has a `start_mission`) → clean hand-off into gameplay.
+- Verified: `tools/ue/run_mission_smoke.sh arrival` → PASS 6/6, beats fire in order, no window, chains to `day_one`; `side_errand` re-smoked PASS 5/5 (no `CompleteMission` regression). Editor module rebuilds clean.
+
+**Still unverified (headless can't settle):** combat *feel* (impact SFX/hit reactions/camera shake/tuning — owner's hands); a rendered play pass of the mission HUD / combat / gauntlet / **cutscene camera framing + timing**; Jimmy's start outfit; look-sensitivity defaults. The cutscene currently plays from the normal gameplay camera (no scripted camera rig) — a dedicated cutscene camera is the natural next step if the owner wants it more cinematic.

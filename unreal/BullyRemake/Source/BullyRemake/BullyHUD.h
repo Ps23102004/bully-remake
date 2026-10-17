@@ -41,6 +41,14 @@ struct FBullyHUDState
 	FString WalletText;         // reward loop: running "$money" (+ respect) shown top-right; empty = hidden
 	float WalletFlash = 0.f;    // seconds left of the gold flash when it changes
 
+	// cinematic (in-engine cutscenes): letterbox bars slide in/out; a dialogue line reads at the bottom
+	float Letterbox = 0.f;       // current bar coverage 0..1 (eased toward LetterboxTarget each tick)
+	float LetterboxTarget = 0.f; // 0 = retracted, 1 = full cinematic bars
+	FString SpeakerText;         // dialogue speaker label (upper-cased on screen); empty = no speaker row
+	FString DialogueText;        // current spoken line
+	float DialogueLeft = 0.f;    // seconds left on the current line (0 = dialogue box hidden)
+	float DialogueTotal = 1.f;
+
 	TWeakObjectPtr<APlayerController> Controller;
 };
 
@@ -64,6 +72,10 @@ public:
 	void ShowBanner(const FString& Text, const FString& Sub, float Seconds, bool bBad);
 	/** Reward loop: set the running wallet readout (top-right). bFlash gives it a brief gold highlight. */
 	void SetWallet(int32 Money, int32 Respect, bool bFlash);
+	/** Cinematic: slide the letterbox bars in (bOn) or out. */
+	void SetLetterbox(bool bOn);
+	/** Cinematic: show one cutscene dialogue line (speaker label + text) for Seconds. */
+	void Say(const FString& Speaker, const FString& Line, float Seconds);
 
 	const FBullyHUDState& GetState() const { return State.Get(); }
 

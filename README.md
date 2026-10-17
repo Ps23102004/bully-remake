@@ -90,6 +90,15 @@ What remains is the part a headless log cannot settle: **combat "feel"** — imp
 
 A first step past the opening slice: an **optional side mission** (`Config/Missions/side_errand.json`, an original campus errand) and a **reward loop**. Finishing a mission can now pay out through a `reward` action into a persistent session wallet (money and respect), shown on the mission HUD. A headless smoke run (`tools/ue/run_mission_smoke.sh side_errand`) drives the errand through all five stages and confirms the payout. This is the loop groundwork; an **open town to roam between missions is not in yet** — the current import only covers the academy grounds and interiors, and bringing in the town districts needs another pass over the original game's world data.
 
+### In-engine arrival cutscene
+
+The opening is now framed by an **in-engine cutscene** (`Config/Missions/arrival.json`), not a pre-rendered video: the new transfer is dropped off at the school gates, a faculty member walks up and lays down the rules, and it hands straight off to `day_one`. It is built entirely from data-driven mission primitives, two of them new and reusable:
+
+- `letterbox` — slides cinematic bars in/out (`{ "type": "letterbox", "on": true }`).
+- `say` — one cutscene dialogue line at a time, with a speaker label (`{ "type": "say", "speaker": "Prefect", "text": "…", "seconds": 4 }`).
+
+Each line is its own timer-paced stage, so the beats read in order with no player input — which also means it runs clean under the headless harness (`tools/ue/run_mission_smoke.sh arrival`, PASS 6/6). The faculty figure reuses the existing spawn as a silent, non-hostile stand-in (there is no dedicated friendly-NPC or branching-dialogue system yet). All dialogue is original wording and the characters are original (no likenesses from the source game). A mission whose `on_complete` chains into another now skips the "MISSION COMPLETE" end-card so the hand-off into gameplay reads clean. What a headless log still cannot settle applies here too: camera framing and timing want a real play pass.
+
 ## Requirements and current setup blockers
 
 1. **Your own installed PC copy of Bully: Scholarship Edition.** Locate its game root, including `Stream/World.img` and the other installed data directories. Do not use someone else's extracted assets.

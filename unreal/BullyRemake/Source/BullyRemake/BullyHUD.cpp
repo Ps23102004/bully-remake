@@ -152,6 +152,48 @@ public:
 			// waypoint (full screen)
 			+ SOverlay::Slot() [ SNew(SBullyWaypoint).State(S) ]
 
+			// cinematic letterbox: black bars that slide in from top and bottom (S->Letterbox 0..1)
+			+ SOverlay::Slot().HAlign(HAlign_Fill).VAlign(VAlign_Top)
+			[
+				SNew(SBox).HeightOverride_Lambda([S]() { return S->Letterbox * 92.f; })
+				.Visibility_Lambda([S]() { return S->Letterbox > 0.004f ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+				[ SNew(SBorder).BorderImage(White).BorderBackgroundColor(FLinearColor(0.f, 0.f, 0.f, 1.f)) ]
+			]
+			+ SOverlay::Slot().HAlign(HAlign_Fill).VAlign(VAlign_Bottom)
+			[
+				SNew(SBox).HeightOverride_Lambda([S]() { return S->Letterbox * 92.f; })
+				.Visibility_Lambda([S]() { return S->Letterbox > 0.004f ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+				[ SNew(SBorder).BorderImage(White).BorderBackgroundColor(FLinearColor(0.f, 0.f, 0.f, 1.f)) ]
+			]
+
+			// cutscene dialogue line, lower centre (sits just above the bottom letterbox bar)
+			+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(FMargin(0.f, 0.f, 0.f, 116.f))
+			[
+				SNew(SBox).MaxDesiredWidth(760.f)
+				.Visibility_Lambda([S]() { return S->DialogueLeft > 0.f ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+				[
+					SNew(SBorder).BorderImage(White).Padding(FMargin(20.f, 12.f, 22.f, 14.f))
+					.BorderBackgroundColor_Lambda([S]() { return FLinearColor(0.02f, 0.02f, 0.04f, 0.82f * FMath::Clamp(S->DialogueLeft * 3.f, 0.f, 1.f)); })
+					[
+						SNew(SVerticalBox)
+						+ SVerticalBox::Slot().AutoHeight()
+						[
+							SNew(STextBlock).Font(Small)
+							.Visibility_Lambda([S]() { return S->SpeakerText.IsEmpty() ? EVisibility::Collapsed : EVisibility::HitTestInvisible; })
+							.ColorAndOpacity_Lambda([S]() { FLinearColor C = Gold; C.A = FMath::Clamp(S->DialogueLeft * 3.f, 0.f, 1.f); return C; })
+							.Text_Lambda([S]() { return FText::FromString(S->SpeakerText.ToUpper()); })
+						]
+						+ SVerticalBox::Slot().AutoHeight().Padding(0, 3, 0, 0)
+						[
+							SNew(STextBlock).Font(Body).AutoWrapText(true)
+							.ColorAndOpacity_Lambda([S]() { return FLinearColor(0.95f, 0.93f, 0.88f, FMath::Clamp(S->DialogueLeft * 3.f, 0.f, 1.f)); })
+							.ShadowOffset(FVector2D(1, 1)).ShadowColorAndOpacity(FLinearColor(0, 0, 0, 0.85f))
+							.Text_Lambda([S]() { return FText::FromString(S->DialogueText); })
+						]
+					]
+				]
+			]
+
 			// wallet readout (reward loop), top right
 			+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(FMargin(28.f, 24.f))
 			[
@@ -328,6 +370,10 @@ void FBullyHUD::Tick(float Dt)
 	S.HintLeft = FMath::Max(0.f, S.HintLeft - Dt);
 	S.BannerLeft = FMath::Max(0.f, S.BannerLeft - Dt);
 	S.WalletFlash = FMath::Max(0.f, S.WalletFlash - Dt);
+	S.DialogueLeft = FMath::Max(0.f, S.DialogueLeft - Dt);
+	// ease the letterbox toward its target (~0.35 s open/close); exponential so it's framerate-independent
+	S.Letterbox = FMath::FInterpTo(S.Letterbox, S.LetterboxTarget, Dt, 9.f);
+	if (FMath::Abs(S.Letterbox - S.LetterboxTarget) < 0.002f) { S.Letterbox = S.LetterboxTarget; }
 }
 
 void FBullyHUD::SetObjective(const FString& MissionTitle, int32 StageNumber, int32 StageCount, const FString& Text)
@@ -354,6 +400,8 @@ void FBullyHUD::ClearObjective()
 {
 	FBullyHUDState& S = State.Get();
 	S.ObjectiveText.Reset(); S.MissionTitle.Reset(); S.StageNumber = 0; S.StageCount = 0; S.bBlip = false; S.PromptText.Reset();
+	// retract any cinematic furniture so a mission hand-off / end never leaves bars or a line stuck on screen
+	S.LetterboxTarget = 0.f; S.DialogueLeft = 0.f; S.SpeakerText.Reset(); S.DialogueText.Reset();
 }
 
 void FBullyHUD::SetBlip(bool bOn, const FVector& World)
@@ -384,4 +432,20 @@ void FBullyHUD::ShowBanner(const FString& Text, const FString& Sub, float Second
 	FBullyHUDState& S = State.Get();
 	S.BannerText = Text; S.BannerSub = Sub; S.BannerLeft = Seconds; S.BannerTotal = Seconds; S.bBannerBad = bBad;
 	UE_LOG(LogBullyHUD, Display, TEXT("BR_HUD banner: %s | %s"), *Text, *Sub);
+}
+
+void FBullyHUD::SetLetterbox(bool bOn)
+{
+	State.Get().LetterboxTarget = bOn ? 1.f : 0.f;
+	UE_LOG(LogBullyHUD, Display, TEXT("BR_HUD letterbox %s"), bOn ? TEXT("on") : TEXT("off"));
+}
+
+void FBullyHUD::Say(const FString& Speaker, const FString& Line, float Seconds)
+{
+	FBullyHUDState& S = State.Get();
+	S.SpeakerText = Speaker;
+	S.DialogueText = Line;
+	S.DialogueLeft = Seconds;
+	S.DialogueTotal = FMath::Max(0.01f, Seconds);
+	UE_LOG(LogBullyHUD, Display, TEXT("BR_HUD say (%.1fs) %s: %s"), Seconds, Speaker.IsEmpty() ? TEXT("-") : *Speaker, *Line);
 }

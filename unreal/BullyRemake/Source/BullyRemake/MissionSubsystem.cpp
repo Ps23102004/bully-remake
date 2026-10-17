@@ -183,6 +183,18 @@ namespace
 				if (O->TryGetNumberField(TEXT("money"), N))   { A.Money = int32(N); }
 				if (O->TryGetNumberField(TEXT("respect"), N)) { A.Respect = int32(N); }
 			}
+			else if (Type == TEXT("letterbox"))
+			{
+				A.Type = FMissionAction::EType::Letterbox;
+				bool b = true; O->TryGetBoolField(TEXT("on"), b); A.bOn = b;   // default on
+			}
+			else if (Type == TEXT("say"))
+			{
+				A.Type = FMissionAction::EType::Say;
+				O->TryGetStringField(TEXT("speaker"), A.Sub);   // Sub = speaker label; Text (line) already read above
+				if (A.Text.IsEmpty()) { O->TryGetStringField(TEXT("line"), A.Text); }   // "line" accepted as an alias for "text"
+				if (!O->HasField(TEXT("seconds"))) { A.Seconds = 4.f; }
+			}
 			else { Err = FString::Printf(TEXT("unknown action type \"%s\""), *Type); return false; }
 			Out.Add(MoveTemp(A));
 		}
@@ -630,10 +642,14 @@ void UMissionSubsystem::CompleteMission()
 	if (!Mission.IsValid()) { return; }
 	State = EState::Complete;
 	UE_LOG(LogBullyMission, Display, TEXT("BR_MISSION complete id=%s stages=%d attempts=%d"), *Mission->Id, Mission->Stages.Num(), Attempt);
+	// A mission that chains straight into another (its on_complete starts a mission) is a beat in a longer sequence
+	// (e.g. a cutscene handing off to gameplay), so skip the "MISSION COMPLETE" end-card and let the hand-off read clean.
+	bool bChains = false;
+	for (const FMissionAction& A : Mission->OnComplete) { if (A.Type == FMissionAction::EType::StartMission) { bChains = true; break; } }
 	if (Hud.IsValid())
 	{
 		Hud->SetBlip(false); Hud->SetPrompt(TEXT(""));
-		Hud->ShowBanner(TEXT("MISSION COMPLETE"), Mission->Title, 4.f, false);
+		if (!bChains) { Hud->ShowBanner(TEXT("MISSION COMPLETE"), Mission->Title, 4.f, false); }
 	}
 	RunActions(Mission->OnComplete);
 	DestroyOwnedTriggers();
@@ -714,6 +730,14 @@ void UMissionSubsystem::RunActions(const TArray<FMissionAction>& Actions)
 			UE_LOG(LogBullyMission, Display, TEXT("BR_MISSION reward money=%d respect=%d"), A.Money, A.Respect);
 			break;
 		}
+		case FMissionAction::EType::Letterbox:
+			if (Hud.IsValid()) { Hud->SetLetterbox(A.bOn); }
+			UE_LOG(LogBullyMission, Display, TEXT("BR_MISSION letterbox %s"), A.bOn ? TEXT("on") : TEXT("off"));
+			break;
+		case FMissionAction::EType::Say:
+			if (Hud.IsValid()) { Hud->Say(A.Sub, A.Text, A.Seconds); }
+			UE_LOG(LogBullyMission, Display, TEXT("BR_MISSION say %s: %s"), A.Sub.IsEmpty() ? TEXT("-") : *A.Sub, *A.Text);
+			break;
 		}
 	}
 }

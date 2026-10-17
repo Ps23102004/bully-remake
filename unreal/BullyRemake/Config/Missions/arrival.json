@@ -1,0 +1,71 @@
+{
+  "_format": "bully-remake.mission/1",
+  "_note": "In-engine ARRIVAL CUTSCENE (no pre-rendered video): the new transfer is dropped off at the school gates and met by a faculty member, then it hands straight off to day_one. Built entirely from data-driven primitives -- `letterbox` (cinematic bars), `say` (one dialogue line at a time, speaker + text), plus `banner`, `spawn_enemy` (repurposed as a silent, non-hostile faculty stand-in that walks up -- there is no dedicated friendly-NPC/dialogue system yet) and `fade`. Each beat is its own timer-paced stage so the lines read in order; the stage machine advances on the timer with no player input, so it also runs clean under the headless smoke harness (-BRMissionSmoke=arrival). ALL dialogue is our own wording, no lines from any script; characters are original (no Jimmy likeness). The player starts at the day_one drop-off spot [29836,7223,700] yaw 180 (facing the courtyard); the faculty stand-in spawns a few metres ahead. on_complete fades to black and chains into day_one (the end-card is auto-suppressed for chained missions).",
+  "id": "arrival",
+  "title": "Arrival",
+  "retry": "none",
+  "start": {
+    "location_cm": [29836, 7223, 700],
+    "yaw": 180
+  },
+  "stages": [
+    {
+      "id": "pull_up",
+      "objective": "",
+      "complete": { "type": "timer", "seconds": 4.5 },
+      "on_start": [
+        { "type": "letterbox", "on": true },
+        { "type": "banner", "text": "A FRESH START", "sub": "or so they keep saying", "seconds": 3.5 },
+        { "type": "say", "speaker": "Guardian", "text": "This is it. End of the drive. Out you get.", "seconds": 4.2 }
+      ]
+    },
+    {
+      "id": "parting_shot",
+      "objective": "",
+      "complete": { "type": "timer", "seconds": 4.2 },
+      "on_start": [
+        { "type": "say", "speaker": "Guardian", "text": "The last school didn't want you back. Don't go making a habit of it.", "seconds": 4.0 }
+      ]
+    },
+    {
+      "id": "kid_mutters",
+      "objective": "",
+      "complete": { "type": "timer", "seconds": 3.2 },
+      "on_start": [
+        { "type": "say", "speaker": "You", "text": "Yeah. Can't wait.", "seconds": 2.8 }
+      ]
+    },
+    {
+      "id": "prefect_arrives",
+      "objective": "",
+      "complete": { "type": "timer", "seconds": 4.6 },
+      "on_start": [
+        { "type": "spawn_enemy", "distance_cm": 300, "player_invulnerable": true, "gate_attack": false, "gate_block": false },
+        { "type": "say", "speaker": "Prefect", "text": "So you're the new transfer. Stand up straight when I'm speaking to you.", "seconds": 4.4 }
+      ]
+    },
+    {
+      "id": "the_rules",
+      "objective": "",
+      "complete": { "type": "timer", "seconds": 5.6 },
+      "on_start": [
+        { "type": "say", "speaker": "Prefect", "text": "Head down, hands to yourself, do as you're told. Trouble finds boys like you quick enough on its own.", "seconds": 5.4 }
+      ]
+    },
+    {
+      "id": "go_inside",
+      "objective": "",
+      "complete": { "type": "timer", "seconds": 4.6 },
+      "on_start": [
+        { "type": "say", "speaker": "Prefect", "text": "The Headmaster's waiting. Through the gates -- and don't dawdle.", "seconds": 4.4 }
+      ],
+      "on_complete": [
+        { "type": "letterbox", "on": false }
+      ]
+    }
+  ],
+  "on_complete": [
+    { "type": "fade", "out": 0.8, "hold": 0.8, "in": 0.8 },
+    { "type": "start_mission", "mission": "day_one", "seconds": 1.4 }
+  ]
+}
