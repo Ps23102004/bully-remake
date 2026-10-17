@@ -30,6 +30,11 @@
 //   actions:    { "type": "hint", "text": "...", "seconds": 5 } | { "type": "banner", "text": "...", "sub": "..." }
 //               { "type": "event", "name": "..." } | { "type": "set_flag" | "clear_flag", "name": "..." }
 //               { "type": "teleport", "point": "name" | "location_cm": [..], "yaw": 0 } | { "type": "log", "text": "..." }
+//               { "type": "start_mission", "mission": "<id>", "seconds": 1.0 }   // chain into the next mission after a beat
+//               { "type": "spawn_enemy", "distance_cm": 300, "health_floor": 5, "player_invulnerable": true,
+//                                        "gate_attack": true, "gate_block": true }   // self-spawn a sparring partner
+//               { "type": "fade", "out": 0.6, "hold": 0.5, "in": 0.9,              // cinematic fade-to-black and back;
+//                                 "point": "name" | "location_cm": [..], "yaw": 0 } // with a point, teleport at full black
 #pragma once
 
 #include "CoreMinimal.h"
@@ -58,7 +63,7 @@ struct FMissionCondition
 
 struct FMissionAction
 {
-	enum class EType : uint8 { Hint, Banner, Event, SetFlag, ClearFlag, Teleport, Log, StartMission, SpawnEnemy };
+	enum class EType : uint8 { Hint, Banner, Event, SetFlag, ClearFlag, Teleport, Log, StartMission, SpawnEnemy, Fade };
 	EType Type = EType::Log;
 	FString Text, Sub;
 	FName Name;
@@ -72,6 +77,10 @@ struct FMissionAction
 	int32 PlayerInvuln = -1;     // -1 leave as-is, 0 clear, 1 set Jimmy invulnerable
 	int32 GateAttack = -1;       // -1 leave, 0/1 allow the spawned enemy to attack
 	int32 GateBlock = -1;        // -1 leave, 0/1 allow the spawned enemy to block
+	// fade: cinematic fade-to-black -> (optional) teleport the player at full black -> fade back in. Seconds each.
+	// With a point/location, the teleport happens while the screen is black (no visible jump); Location/Yaw hold it.
+	float FadeOut = 0.5f, FadeHold = 0.4f, FadeIn = 0.8f;
+	bool bFadeTeleport = false;
 };
 
 struct FMissionStage
@@ -116,13 +125,19 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FMissionStageDelegate, const FMissionDef& /
 DECLARE_MULTICAST_DELEGATE_OneParam(FMissionEventDelegate, FName /*Event*/);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FMissionDoneDelegate, const FMissionDef& /*Mission*/, bool /*bSuccess*/);
 
-UCLASS()
+UCLASS(Config = Game)
 class UMissionSubsystem : public UTickableWorldSubsystem
 {
 	GENERATED_BODY()
 
 public:
 	enum class EState : uint8 { Idle, Running, Failed, Complete };
+
+	/** Data-driven boot mission: the id auto-started when no -BRMission= is on the command line (empty = none).
+	 *  Set in DefaultGame.ini under [/Script/BullyRemake.MissionSubsystem] (e.g. BootMission=day_one) so a packaged,
+	 *  double-clickable build drops straight into that mission. -BRMission= on the command line always overrides this. */
+	UPROPERTY(Config)
+	FString BootMission;
 
 	static UMissionSubsystem* Get(UWorld* World);
 
@@ -185,6 +200,8 @@ private:
 	void DestroyOwnedTriggers();
 	void EnsureHud();
 	void RefreshHudPerFrame(float Dt);
+	void TickFade(float Dt);           // drives the cinematic fade (fade action); independent of the stage machine
+	void SetCameraFade(float Alpha);   // 0 = clear, 1 = full black, via the player camera manager
 
 	// smoke harness (-BRMissionSmoke[=id]): drives the player through the mission headless and logs PASS/FAIL
 	void TickSmoke(float Dt);
@@ -221,4 +238,12 @@ private:
 	TSharedPtr<FBullyHUD> Hud;
 	FString PendingAutoStart;
 	double AutoStartAt = 0.0;
+
+	// cinematic fade state (fade action)
+	enum class EFadePhase : uint8 { None, Out, Hold, In } FadePhase = EFadePhase::None;
+	float FadeOutDur = 0.5f, FadeHoldDur = 0.4f, FadeInDur = 0.8f;
+	double FadePhaseStart = 0.0;
+	bool bFadePendingTeleport = false;
+	FVector FadeTeleportLoc = FVector::ZeroVector;
+	float FadeTeleportYaw = 0.f;
 };

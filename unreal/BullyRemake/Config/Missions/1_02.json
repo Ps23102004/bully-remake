@@ -1,6 +1,6 @@
 {
   "_format": "bully-remake.mission/1",
-  "_note": "Day One, part 2 of 2: a short briefing in the office, head back out, cross the grounds to the boys' dorm court, a crowd gathers for a forced practice fight (seven guided steps, each gated on the real combat event), the crowd leaves, then walk through the dorm door to an original end card. Beats follow docs/re-notes/opening-slice-recon.md B0-B8 + the epilogue in section 5; ALL text here is our own wording. Combat events (docs/re-notes/combat.md): block_success, combo_done, grapple_start, grapple_strike, grapple_strikes_done, grapple_done, ground_kick, enemy_beaten, humiliation_done, enemy_knocked_out, player_knocked_out. NPC cues (Config/NPCScripts/day_one.json): npc_crowd_gather (fight start), enemy_knocked_out disperses the crowd by itself, npc_crowd_clear. Mission flags read by the combat AI: combat_ai_passive (no swings), combat_ai_noblock. GAPS the framework cannot express in data (reported, not worked around in C++): the sparring partner must be spawned with the console command Combat.SpawnEnemy 5 (event combat_spawn_partner marks where a mission action should do it), likewise Combat.Invulnerable 1 for the tutorial; no fade action (the end card is a HUD banner); the dorm door has no BullyDoorLink pair, so the epilogue uses a teleport action. Start with Mission.Start 1_02 (teleports to the principal's room) or play the combined day_one mission.",
+  "_note": "Day One, part 2 of 2: a short briefing in the office, head back out, cross the grounds to the boys' dorm court, a crowd gathers for a forced practice fight (seven guided steps, each gated on the real combat event), the crowd leaves, then walk through the dorm door to an original end card. Beats follow docs/re-notes/opening-slice-recon.md B0-B8 + the epilogue in section 5; ALL text here is our own wording. Combat events (docs/re-notes/combat.md): block_success, combo_done, grapple_start, grapple_strike, grapple_strikes_done, grapple_done, ground_kick, enemy_beaten, humiliation_done, enemy_knocked_out, player_knocked_out. NPC cues (Config/NPCScripts/day_one.json): npc_crowd_gather (fight start), enemy_knocked_out disperses the crowd by itself, npc_crowd_clear. Mission flags read by the combat AI: combat_ai_passive (no swings), combat_ai_noblock. The fight_intro stage now self-spawns the sparring partner (spawn_enemy action) and sets Jimmy invulnerable for the tutorial in data, and the epilogue uses a cinematic fade action (fade to black, teleport to the room at full black, fade in) rather than a bare teleport. The dorm door is not a placed BullyDoorLink pair (that needs level actors), so the fade action is the level-agnostic equivalent. Start with Mission.Start 1_02 (teleports to the principal's room) or play the combined day_one mission.",
   "id": "1_02",
   "title": "Day One: The Dorm Court",
   "retry": "stage",
@@ -524,7 +524,10 @@
       },
       "on_complete": [
         {
-          "type": "teleport",
+          "type": "fade",
+          "out": 0.6,
+          "hold": 0.5,
+          "in": 0.9,
           "point": "dorm_interior",
           "yaw": 0
         }

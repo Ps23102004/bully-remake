@@ -259,10 +259,6 @@
       },
       "on_complete": [
         {
-          "type": "log",
-          "text": "1_01 complete: next mission is 1_02 (start with Mission.Start 1_02 or play the combined day_one mission)"
-        },
-        {
           "type": "event",
           "name": "mission_chain_1_02"
         }
@@ -707,7 +703,10 @@
       },
       "on_complete": [
         {
-          "type": "teleport",
+          "type": "fade",
+          "out": 0.6,
+          "hold": 0.5,
+          "in": 0.9,
           "point": "dorm_interior",
           "yaw": 0
         }

@@ -6,6 +6,7 @@
 #include "BullyCombatPawn.h"
 #include "BullyCombatTest.h"
 #include "BullyHUD.h"
+#include "Camera/PlayerCameraManager.h"
 #include "Dom/JsonObject.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -164,6 +165,16 @@ namespace
 				if (O->TryGetBoolField(TEXT("gate_attack"), b)) { A.GateAttack = b ? 1 : 0; }
 				if (O->TryGetBoolField(TEXT("gate_block"), b)) { A.GateBlock = b ? 1 : 0; }
 			}
+			else if (Type == TEXT("fade"))
+			{
+				A.Type = FMissionAction::EType::Fade;
+				double F = 0.0;
+				if (O->TryGetNumberField(TEXT("out"), F))  { A.FadeOut  = FMath::Max(0.f, float(F)); }
+				if (O->TryGetNumberField(TEXT("hold"), F)) { A.FadeHold = FMath::Max(0.f, float(F)); }
+				if (O->TryGetNumberField(TEXT("in"), F))   { A.FadeIn   = FMath::Max(0.f, float(F)); }
+				// Optional teleport (resolved like the teleport action) happens at full black, so there is no visible jump.
+				A.bFadeTeleport = ReadLocation(*O, D, A.Location);
+			}
 			else { Err = FString::Printf(TEXT("unknown action type \"%s\""), *Type); return false; }
 			Out.Add(MoveTemp(A));
 		}
@@ -272,6 +283,13 @@ void UMissionSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	{
 		PendingAutoStart = Id;
 		AutoStartAt = InWorld.GetTimeSeconds() + 1.0;
+	}
+	else if (!BootMission.IsEmpty())
+	{
+		// Data-driven default (DefaultGame.ini): a packaged build with no args boots into this mission.
+		PendingAutoStart = BootMission;
+		AutoStartAt = InWorld.GetTimeSeconds() + 1.0;
+		UE_LOG(LogBullyMission, Display, TEXT("BR_MISSION boot mission '%s' (config BootMission)"), *BootMission);
 	}
 	FString SmokeId;
 	if (FParse::Param(FCommandLine::Get(), TEXT("BRMissionSmoke")) || FParse::Value(FCommandLine::Get(), TEXT("-BRMissionSmoke="), SmokeId))
@@ -651,7 +669,72 @@ void UMissionSubsystem::RunActions(const TArray<FMissionAction>& Actions)
 				A.Dist, A.HealthFloor, A.PlayerInvuln, A.GateAttack, A.GateBlock, E ? *E->GetName() : TEXT("FAILED"));
 			break;
 		}
+		case FMissionAction::EType::Fade:
+			// Start the fade now; TickFade drives it (fade-out -> optional teleport at full black -> fade-in),
+			// so the stage machine keeps running underneath (e.g. the end-card banner shows while black).
+			if (UWorld* W = GetWorld())
+			{
+				FadeOutDur = A.FadeOut; FadeHoldDur = A.FadeHold; FadeInDur = A.FadeIn;
+				bFadePendingTeleport = A.bFadeTeleport;
+				FadeTeleportLoc = A.Location; FadeTeleportYaw = A.Yaw;
+				FadePhase = EFadePhase::Out;
+				FadePhaseStart = W->GetTimeSeconds();
+				SetCameraFade(0.f);
+				UE_LOG(LogBullyMission, Display, TEXT("BR_MISSION fade out=%.2f hold=%.2f in=%.2f teleport=%d"),
+					FadeOutDur, FadeHoldDur, FadeInDur, bFadePendingTeleport ? 1 : 0);
+			}
+			break;
 		}
+	}
+}
+
+namespace { float FadeSmooth01(float X) { X = FMath::Clamp(X, 0.f, 1.f); return X * X * (3.f - 2.f * X); } }
+
+void UMissionSubsystem::SetCameraFade(float Alpha)
+{
+	APawn* Pawn = GetPlayerPawn();
+	if (!Pawn) { return; }
+	if (APlayerController* PC = Cast<APlayerController>(Pawn->GetController()))
+	{
+		if (PC->PlayerCameraManager)
+		{
+			if (Alpha <= 0.f) { PC->PlayerCameraManager->StopCameraFade(); }
+			else { PC->PlayerCameraManager->SetManualCameraFade(FMath::Min(Alpha, 1.f), FLinearColor::Black, /*bFadeAudio*/ false); }
+		}
+	}
+}
+
+void UMissionSubsystem::TickFade(float /*Dt*/)
+{
+	if (FadePhase == EFadePhase::None) { return; }
+	UWorld* World = GetWorld();
+	if (!World) { return; }
+	const float Elapsed = float(World->GetTimeSeconds() - FadePhaseStart);
+	switch (FadePhase)
+	{
+	case EFadePhase::Out:
+	{
+		const float Dur = FMath::Max(FadeOutDur, 0.02f);
+		if (Elapsed < FadeOutDur) { SetCameraFade(FadeSmooth01(Elapsed / Dur)); break; }
+		SetCameraFade(1.f);
+		if (bFadePendingTeleport) { TeleportPlayer(FadeTeleportLoc, FadeTeleportYaw, true); bFadePendingTeleport = false; }
+		FadePhase = EFadePhase::Hold;
+		FadePhaseStart = World->GetTimeSeconds();
+		break;
+	}
+	case EFadePhase::Hold:
+		SetCameraFade(1.f);
+		if (Elapsed >= FadeHoldDur) { FadePhase = EFadePhase::In; FadePhaseStart = World->GetTimeSeconds(); }
+		break;
+	case EFadePhase::In:
+	{
+		const float Dur = FMath::Max(FadeInDur, 0.02f);
+		if (Elapsed < FadeInDur) { SetCameraFade(1.f - FadeSmooth01(Elapsed / Dur)); break; }
+		SetCameraFade(0.f);
+		FadePhase = EFadePhase::None;
+		break;
+	}
+	default: break;
 	}
 }
 
@@ -912,6 +995,7 @@ void UMissionSubsystem::Tick(float Dt)
 		StartMission(Id);
 	}
 	if (Smoke.bEnabled) { TickSmoke(Dt); }
+	TickFade(Dt);
 	if (Hud.IsValid()) { Hud->Tick(Dt); }
 
 	if (State == EState::Running && Mission.IsValid())
