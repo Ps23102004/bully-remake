@@ -1,0 +1,62 @@
+{
+  "_format": "bully-remake.mission/1",
+  "_note": "Phase B: a self-contained OPTIONAL side mission on the already-imported academy grounds (area 0, the front courtyard), to exercise the objective -> reward loop. ALL text is our own wording (not from any script). A nervous younger student has dropped three of his things on the lawn; find all three and bring them back for a cash reward. Pickups are interact triggers (no item mesh yet -> the HUD prompt stands in; a placeholder for a future small prop). Coordinates are UE cm within the walkable courtyard corridor used by 1_01 (x ~22000-28000, y ~6000-8500, z ~700). Start with Mission.Start side_errand, -BRMission=side_errand, or the headless smoke harness -BRMissionSmoke=side_errand. The on_complete reward pays UBullyProgressSubsystem (the HUD wallet, top right).",
+  "id": "side_errand",
+  "title": "Campus Courier",
+  "retry": "stage",
+  "fail_delay": 2.5,
+  "start": {
+    "location_cm": [26800, 7300, 700],
+    "yaw": 180
+  },
+  "points": {
+    "giver": { "location_cm": [26800, 7300, 700] }
+  },
+  "triggers": [
+    { "id": "errand_giver", "center_cm": [26800, 7300, 700], "half_extent_cm": [220, 220, 250], "interact": true, "prompt": "Talk to the kid" },
+    { "id": "errand_item_a", "center_cm": [24200, 6300, 700], "half_extent_cm": [200, 200, 250], "interact": true, "prompt": "Pick up the dropped textbook" },
+    { "id": "errand_item_b", "center_cm": [22600, 8100, 700], "half_extent_cm": [200, 200, 250], "interact": true, "prompt": "Pick up the lunch bag" },
+    { "id": "errand_item_c", "center_cm": [27800, 8200, 700], "half_extent_cm": [200, 200, 250], "interact": true, "prompt": "Pick up the cap" }
+  ],
+  "stages": [
+    {
+      "id": "accept",
+      "objective": "A younger student in the courtyard looks like he needs a hand.",
+      "complete": { "type": "interact", "trigger": "errand_giver" },
+      "on_start": [
+        { "type": "banner", "text": "A FAVOUR", "sub": "There's a few coins in it for you", "seconds": 4 },
+        { "type": "hint", "text": "Someone dropped their things all over the lawn. Hear him out.", "seconds": 6 }
+      ],
+      "on_complete": [
+        { "type": "hint", "text": "Three things, scattered across the grounds. Round them up.", "seconds": 6 }
+      ]
+    },
+    {
+      "id": "item_a",
+      "objective": "Find the first of his things (1 of 3).",
+      "complete": { "type": "interact", "trigger": "errand_item_a" }
+    },
+    {
+      "id": "item_b",
+      "objective": "Find the second (2 of 3).",
+      "complete": { "type": "interact", "trigger": "errand_item_b" }
+    },
+    {
+      "id": "item_c",
+      "objective": "Find the last one (3 of 3).",
+      "complete": { "type": "interact", "trigger": "errand_item_c" },
+      "on_complete": [
+        { "type": "hint", "text": "That's everything. Take it back to him.", "seconds": 5 }
+      ]
+    },
+    {
+      "id": "return",
+      "objective": "Bring his things back to the courtyard.",
+      "complete": { "type": "interact", "trigger": "errand_giver" }
+    }
+  ],
+  "on_complete": [
+    { "type": "banner", "text": "GOOD DEED DONE", "sub": "He won't forget it", "seconds": 5 },
+    { "type": "reward", "money": 75, "respect": 15, "text": "Reward: $75  +  15 respect" }
+  ]
+}

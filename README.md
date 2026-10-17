@@ -86,6 +86,10 @@ The opening mission now runs start-to-finish in the framework: the first two mis
 
 What remains is the part a headless log cannot settle: **combat "feel"** — impact effects, hit reactions, and tuning — is unjudged and needs hands-on play, and the mission, combat, and gauntlet have been checked in headless logs rather than a rendered play session. A headless test passing does not establish that a person can play the slice unaided, so treat the live feel as unverified until it has had a real play pass.
 
+### Beyond Day One: the objective → reward loop
+
+A first step past the opening slice: an **optional side mission** (`Config/Missions/side_errand.json`, an original campus errand) and a **reward loop**. Finishing a mission can now pay out through a `reward` action into a persistent session wallet (money and respect), shown on the mission HUD. A headless smoke run (`tools/ue/run_mission_smoke.sh side_errand`) drives the errand through all five stages and confirms the payout. This is the loop groundwork; an **open town to roam between missions is not in yet** — the current import only covers the academy grounds and interiors, and bringing in the town districts needs another pass over the original game's world data.
+
 ## Requirements and current setup blockers
 
 1. **Your own installed PC copy of Bully: Scholarship Edition.** Locate its game root, including `Stream/World.img` and the other installed data directories. Do not use someone else's extracted assets.

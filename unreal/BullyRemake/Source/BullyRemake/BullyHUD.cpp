@@ -152,6 +152,29 @@ public:
 			// waypoint (full screen)
 			+ SOverlay::Slot() [ SNew(SBullyWaypoint).State(S) ]
 
+			// wallet readout (reward loop), top right
+			+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(FMargin(28.f, 24.f))
+			[
+				SNew(SBox)
+				.Visibility_Lambda([S]() { return S->WalletText.IsEmpty() ? EVisibility::Collapsed : EVisibility::HitTestInvisible; })
+				[
+					SNew(SBorder).BorderImage(White).BorderBackgroundColor(Panel).Padding(FMargin(14.f, 7.f, 16.f, 8.f))
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						[
+							SNew(STextBlock).Font(Small).ColorAndOpacity(Gold).Text(FText::FromString(TEXT("CASH")))
+						]
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0)
+						[
+							SNew(STextBlock).Font(Key)
+							.ColorAndOpacity_Lambda([S]() { return S->WalletFlash > 0.f ? FLinearColor::White : Cream; })
+							.Text_Lambda([S]() { return FText::FromString(S->WalletText); })
+						]
+					]
+				]
+			]
+
 			// objective panel, top left
 			+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(FMargin(28.f, 24.f))
 			[
@@ -304,6 +327,7 @@ void FBullyHUD::Tick(float Dt)
 	S.ObjectiveFlash = FMath::Max(0.f, S.ObjectiveFlash - Dt);
 	S.HintLeft = FMath::Max(0.f, S.HintLeft - Dt);
 	S.BannerLeft = FMath::Max(0.f, S.BannerLeft - Dt);
+	S.WalletFlash = FMath::Max(0.f, S.WalletFlash - Dt);
 }
 
 void FBullyHUD::SetObjective(const FString& MissionTitle, int32 StageNumber, int32 StageCount, const FString& Text)
@@ -315,6 +339,15 @@ void FBullyHUD::SetObjective(const FString& MissionTitle, int32 StageNumber, int
 	S.ObjectiveText = Text;
 	S.ObjectiveFlash = 1.6f;
 	UE_LOG(LogBullyHUD, Display, TEXT("BR_HUD objective %d/%d: %s"), StageNumber, StageCount, *Text);
+}
+
+void FBullyHUD::SetWallet(int32 Money, int32 Respect, bool bFlash)
+{
+	FBullyHUDState& S = State.Get();
+	S.WalletText = Respect > 0
+		? FString::Printf(TEXT("$%d   %d REP"), Money, Respect)
+		: FString::Printf(TEXT("$%d"), Money);
+	if (bFlash) { S.WalletFlash = 1.4f; }
 }
 
 void FBullyHUD::ClearObjective()

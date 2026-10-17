@@ -38,6 +38,9 @@ struct FBullyHUDState
 	float BannerTotal = 1.f;
 	bool bBannerBad = false;
 
+	FString WalletText;         // reward loop: running "$money" (+ respect) shown top-right; empty = hidden
+	float WalletFlash = 0.f;    // seconds left of the gold flash when it changes
+
 	TWeakObjectPtr<APlayerController> Controller;
 };
 
@@ -59,6 +62,8 @@ public:
 	void SetPrompt(const FString& Text, const FString& Key = TEXT("E"));
 	void ShowHint(const FString& Text, float Seconds);
 	void ShowBanner(const FString& Text, const FString& Sub, float Seconds, bool bBad);
+	/** Reward loop: set the running wallet readout (top-right). bFlash gives it a brief gold highlight. */
+	void SetWallet(int32 Money, int32 Respect, bool bFlash);
 
 	const FBullyHUDState& GetState() const { return State.Get(); }
 

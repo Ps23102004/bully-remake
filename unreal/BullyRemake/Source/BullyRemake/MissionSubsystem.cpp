@@ -6,6 +6,7 @@
 #include "BullyCombatPawn.h"
 #include "BullyCombatTest.h"
 #include "BullyHUD.h"
+#include "BullyProgressSubsystem.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Dom/JsonObject.h"
 #include "Engine/Engine.h"
@@ -174,6 +175,13 @@ namespace
 				if (O->TryGetNumberField(TEXT("in"), F))   { A.FadeIn   = FMath::Max(0.f, float(F)); }
 				// Optional teleport (resolved like the teleport action) happens at full black, so there is no visible jump.
 				A.bFadeTeleport = ReadLocation(*O, D, A.Location);
+			}
+			else if (Type == TEXT("reward"))
+			{
+				A.Type = FMissionAction::EType::Reward;
+				double N = 0.0;
+				if (O->TryGetNumberField(TEXT("money"), N))   { A.Money = int32(N); }
+				if (O->TryGetNumberField(TEXT("respect"), N)) { A.Respect = int32(N); }
 			}
 			else { Err = FString::Printf(TEXT("unknown action type \"%s\""), *Type); return false; }
 			Out.Add(MoveTemp(A));
@@ -684,6 +692,28 @@ void UMissionSubsystem::RunActions(const TArray<FMissionAction>& Actions)
 					FadeOutDur, FadeHoldDur, FadeInDur, bFadePendingTeleport ? 1 : 0);
 			}
 			break;
+		case FMissionAction::EType::Reward:
+		{
+			UBullyProgressSubsystem* Prog = UBullyProgressSubsystem::Get(GetWorld());
+			if (Prog)
+			{
+				Prog->AddMoney(A.Money);
+				Prog->AddRespect(A.Respect);
+				if (Hud.IsValid()) { Hud->SetWallet(Prog->GetMoney(), Prog->GetRespect(), true); }
+			}
+			// Toast it: explicit text wins, else a generated line from whatever was granted.
+			FString Line = A.Text;
+			if (Line.IsEmpty())
+			{
+				TArray<FString> Parts;
+				if (A.Money != 0)   { Parts.Add(FString::Printf(TEXT("$%d"), A.Money)); }
+				if (A.Respect != 0) { Parts.Add(FString::Printf(TEXT("%d respect"), A.Respect)); }
+				Line = Parts.Num() ? FString::Printf(TEXT("Reward: %s"), *FString::Join(Parts, TEXT("  +  "))) : FString();
+			}
+			if (!Line.IsEmpty() && Hud.IsValid()) { Hud->ShowHint(Line, 4.f); }
+			UE_LOG(LogBullyMission, Display, TEXT("BR_MISSION reward money=%d respect=%d"), A.Money, A.Respect);
+			break;
+		}
 		}
 	}
 }
@@ -957,6 +987,11 @@ void UMissionSubsystem::EnsureHud()
 void UMissionSubsystem::RefreshHudPerFrame(float Dt)
 {
 	if (!Hud.IsValid() || !Mission.IsValid()) { return; }
+	// keep the wallet readout live (no flash — reward actions do the flash themselves)
+	if (UBullyProgressSubsystem* Prog = UBullyProgressSubsystem::Get(GetWorld()))
+	{
+		Hud->SetWallet(Prog->GetMoney(), Prog->GetRespect(), false);
+	}
 	if (State == EState::Running)
 	{
 		FVector V;
@@ -1050,7 +1085,17 @@ void UMissionSubsystem::TickSmoke(float Dt)
 		if (Smoke.Elapsed > 3.0 && GetPlayerPawn())
 		{
 			Smoke.bStarted = true;
-			if (!StartMission(Smoke.MissionId)) { Quit(false, TEXT("mission failed to load")); }
+			if (!StartMission(Smoke.MissionId)) { Quit(false, TEXT("mission failed to load")); return; }
+			// Only expect a fail/retry exercise if this mission actually defines a smoke_fail stage (day_one does;
+			// a plain errand mission need not). Keeps the harness usable for any mission.
+			Smoke.bWantFailTest = false;
+			if (Mission.IsValid())
+			{
+				for (const FMissionStage& St : Mission->Stages)
+				{
+					if (St.Fail.Type == FMissionCondition::EType::Event && St.Fail.Name == FName("smoke_fail")) { Smoke.bWantFailTest = true; break; }
+				}
+			}
 		}
 		return;
 	}

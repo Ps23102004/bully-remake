@@ -35,6 +35,7 @@
 //                                        "gate_attack": true, "gate_block": true }   // self-spawn a sparring partner
 //               { "type": "fade", "out": 0.6, "hold": 0.5, "in": 0.9,              // cinematic fade-to-black and back;
 //                                 "point": "name" | "location_cm": [..], "yaw": 0 } // with a point, teleport at full black
+//               { "type": "reward", "money": 75, "respect": 15, "text": "..." }     // pay the persistent wallet + toast
 #pragma once
 
 #include "CoreMinimal.h"
@@ -63,7 +64,7 @@ struct FMissionCondition
 
 struct FMissionAction
 {
-	enum class EType : uint8 { Hint, Banner, Event, SetFlag, ClearFlag, Teleport, Log, StartMission, SpawnEnemy, Fade };
+	enum class EType : uint8 { Hint, Banner, Event, SetFlag, ClearFlag, Teleport, Log, StartMission, SpawnEnemy, Fade, Reward };
 	EType Type = EType::Log;
 	FString Text, Sub;
 	FName Name;
@@ -81,6 +82,8 @@ struct FMissionAction
 	// With a point/location, the teleport happens while the screen is black (no visible jump); Location/Yaw hold it.
 	float FadeOut = 0.5f, FadeHold = 0.4f, FadeIn = 0.8f;
 	bool bFadeTeleport = false;
+	// reward: grant to the persistent wallet (UBullyProgressSubsystem) and toast it. Text = optional custom banner line.
+	int32 Money = 0, Respect = 0;
 };
 
 struct FMissionStage
