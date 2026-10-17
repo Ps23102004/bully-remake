@@ -7,6 +7,8 @@
 #include "BullyCombatTest.h"
 #include "BullyHUD.h"
 #include "BullyProgressSubsystem.h"
+#include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Dom/JsonObject.h"
 #include "Engine/Engine.h"
@@ -195,6 +197,26 @@ namespace
 				if (A.Text.IsEmpty()) { O->TryGetStringField(TEXT("line"), A.Text); }   // "line" accepted as an alias for "text"
 				if (!O->HasField(TEXT("seconds"))) { A.Seconds = 4.f; }
 			}
+			else if (Type == TEXT("camera"))
+			{
+				A.Type = FMissionAction::EType::Camera;
+				double B = 0.0; if (O->TryGetNumberField(TEXT("blend"), B)) { A.Blend = FMath::Max(0.f, float(B)); }
+				bool bRel = false; O->TryGetBoolField(TEXT("release"), bRel); A.bRelease = bRel;
+				if (!A.bRelease)
+				{
+					if (!ReadLocation(*O, D, A.Location)) { Err = TEXT("camera: needs a point / location_cm"); return false; }
+					// look target: "look":"player"|"<point>" or a "look_cm":[x,y,z] spot (a point name wins)
+					FString Lk;
+					if (O->TryGetStringField(TEXT("look"), Lk))
+					{
+						if (Lk.Equals(TEXT("player"), ESearchCase::IgnoreCase)) { A.bLookPlayer = true; }
+						else if (const FVector* P = D.Points.Find(FName(*Lk))) { A.Look = *P; A.bHasLook = true; }
+						else { Err = FString::Printf(TEXT("camera: unknown look point \"%s\""), *Lk); return false; }
+					}
+					else if (ReadVec3(*O, TEXT("look_cm"), A.Look)) { A.bHasLook = true; }
+					double F = 0.0; if (O->TryGetNumberField(TEXT("fov"), F)) { A.Fov = float(F); }
+				}
+			}
 			else { Err = FString::Printf(TEXT("unknown action type \"%s\""), *Type); return false; }
 			Out.Add(MoveTemp(A));
 		}
@@ -323,6 +345,7 @@ void UMissionSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 
 void UMissionSubsystem::Deinitialize()
 {
+	if (ACameraActor* Cam = CutsceneCam.Get()) { Cam->Destroy(); CutsceneCam = nullptr; }
 	DestroyOwnedTriggers();
 	if (Hud.IsValid()) { Hud->Hide(); Hud.Reset(); }
 	Super::Deinitialize();
@@ -510,6 +533,7 @@ void UMissionSubsystem::StopMission(const FString& Reason)
 	if (State == EState::Idle) { return; }
 	const bool bWasDone = State == EState::Complete;
 	UE_LOG(LogBullyMission, Display, TEXT("BR_MISSION stop id=%s (%s)"), Mission.IsValid() ? *Mission->Id : TEXT("?"), *Reason);
+	ReleaseCutsceneCamera(0.f);   // never leave gameplay looking through a cutscene camera
 	DestroyOwnedTriggers();
 	if (Hud.IsValid()) { Hud->ClearObjective(); Hud->Hide(); }
 	State = EState::Idle;
@@ -652,6 +676,9 @@ void UMissionSubsystem::CompleteMission()
 		if (!bChains) { Hud->ShowBanner(TEXT("MISSION COMPLETE"), Mission->Title, 4.f, false); }
 	}
 	RunActions(Mission->OnComplete);
+	// A terminal mission returns to gameplay, so never leave a cutscene camera live (a chaining one hands off via
+	// StopMission, which releases it there). If on_complete deliberately set a camera, that's respected on the chain.
+	if (!bChains) { ReleaseCutsceneCamera(0.6f); }
 	DestroyOwnedTriggers();
 	OnMissionFinished.Broadcast(*Mission, true);
 }
@@ -738,6 +765,9 @@ void UMissionSubsystem::RunActions(const TArray<FMissionAction>& Actions)
 			if (Hud.IsValid()) { Hud->Say(A.Sub, A.Text, A.Seconds); }
 			UE_LOG(LogBullyMission, Display, TEXT("BR_MISSION say %s: %s"), A.Sub.IsEmpty() ? TEXT("-") : *A.Sub, *A.Text);
 			break;
+		case FMissionAction::EType::Camera:
+			ApplyCamera(A);
+			break;
 		}
 	}
 }
@@ -756,6 +786,48 @@ void UMissionSubsystem::SetCameraFade(float Alpha)
 			else { PC->PlayerCameraManager->SetManualCameraFade(FMath::Min(Alpha, 1.f), FLinearColor::Black, /*bFadeAudio*/ false); }
 		}
 	}
+}
+
+void UMissionSubsystem::ApplyCamera(const FMissionAction& A)
+{
+	UWorld* World = GetWorld();
+	APawn* Pawn = GetPlayerPawn();
+	APlayerController* PC = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
+	if (!World || !PC) { UE_LOG(LogBullyMission, Warning, TEXT("BR_MISSION camera: no player controller")); return; }
+
+	if (A.bRelease) { ReleaseCutsceneCamera(A.Blend); return; }
+
+	// aim: at the player, an explicit spot, or (default) keep the camera's current facing by looking slightly ahead
+	FVector LookAt = A.Look;
+	if (A.bLookPlayer && Pawn) { LookAt = Pawn->GetActorLocation() + FVector(0, 0, 60.f); }
+	else if (!A.bHasLook) { LookAt = A.Location + FVector(100.f, 0, 0); }
+	const FRotator Rot = (LookAt - A.Location).Rotation();
+
+	ACameraActor* Cam = CutsceneCam.Get();
+	if (!Cam)
+	{
+		FActorSpawnParameters SP; SP.ObjectFlags |= RF_Transient;
+		Cam = World->SpawnActor<ACameraActor>(A.Location, Rot, SP);
+		CutsceneCam = Cam;
+	}
+	if (!Cam) { UE_LOG(LogBullyMission, Warning, TEXT("BR_MISSION camera: spawn failed")); return; }
+	Cam->SetActorLocationAndRotation(A.Location, Rot);
+	if (A.Fov > 1.f && Cam->GetCameraComponent()) { Cam->GetCameraComponent()->SetFieldOfView(A.Fov); }
+	PC->SetViewTargetWithBlend(Cam, A.Blend, VTBlend_Cubic);
+	UE_LOG(LogBullyMission, Display, TEXT("BR_MISSION camera at=%s look=%s fov=%.0f blend=%.2f"),
+		*A.Location.ToCompactString(), *LookAt.ToCompactString(), A.Fov, A.Blend);
+}
+
+void UMissionSubsystem::ReleaseCutsceneCamera(float Blend)
+{
+	APawn* Pawn = GetPlayerPawn();
+	if (APlayerController* PC = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr)
+	{
+		PC->SetViewTargetWithBlend(Pawn, FMath::Max(0.f, Blend), VTBlend_Cubic);
+		UE_LOG(LogBullyMission, Display, TEXT("BR_MISSION camera release -> player (blend=%.2f)"), Blend);
+	}
+	if (ACameraActor* Cam = CutsceneCam.Get()) { Cam->Destroy(); }
+	CutsceneCam = nullptr;
 }
 
 void UMissionSubsystem::TickFade(float /*Dt*/)

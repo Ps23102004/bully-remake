@@ -38,6 +38,10 @@
 //               { "type": "reward", "money": 75, "respect": 15, "text": "..." }     // pay the persistent wallet + toast
 //               { "type": "letterbox", "on": true }                                 // slide cinematic bars in (true) / out (false)
 //               { "type": "say", "speaker": "PREFECT", "text": "...", "seconds": 4 } // one cutscene dialogue line at the bottom
+//               { "type": "camera", "point": "name" | "location_cm": [..],           // cut/blend to a scripted cutscene camera
+//                                   "look": "player" | "<point>" | "look_cm": [..],  //   aimed at the player, a point, or a spot
+//                                   "fov": 50, "blend": 1.2 }                         //   (blend 0 = hard cut)
+//               { "type": "camera", "release": true, "blend": 0.8 }                  // hand the view back to the player's camera
 #pragma once
 
 #include "CoreMinimal.h"
@@ -47,6 +51,7 @@
 class AMissionTrigger;
 class FBullyHUD;
 class APawn;
+class ACameraActor;
 
 struct FMissionCondition
 {
@@ -66,7 +71,7 @@ struct FMissionCondition
 
 struct FMissionAction
 {
-	enum class EType : uint8 { Hint, Banner, Event, SetFlag, ClearFlag, Teleport, Log, StartMission, SpawnEnemy, Fade, Reward, Letterbox, Say };
+	enum class EType : uint8 { Hint, Banner, Event, SetFlag, ClearFlag, Teleport, Log, StartMission, SpawnEnemy, Fade, Reward, Letterbox, Say, Camera };
 	EType Type = EType::Log;
 	FString Text, Sub;
 	FName Name;
@@ -88,6 +93,11 @@ struct FMissionAction
 	int32 Money = 0, Respect = 0;
 	// letterbox: slide the cinematic bars in (bOn) or out. say: Sub = speaker label, Text = line, Seconds = how long it reads.
 	bool bOn = true;
+	// camera: Location = camera position; Look / bLookPlayer / bHasLook = aim; Fov (0 = leave); Blend = seconds (0 = hard cut).
+	// bRelease hands the view back to the player's own camera.
+	FVector Look = FVector::ZeroVector;
+	bool bHasLook = false, bLookPlayer = false, bRelease = false;
+	float Fov = 0.f, Blend = 0.5f;
 };
 
 struct FMissionStage
@@ -209,6 +219,8 @@ private:
 	void RefreshHudPerFrame(float Dt);
 	void TickFade(float Dt);           // drives the cinematic fade (fade action); independent of the stage machine
 	void SetCameraFade(float Alpha);   // 0 = clear, 1 = full black, via the player camera manager
+	void ApplyCamera(const FMissionAction& A);   // cut/blend to (or release) the scripted cutscene camera
+	void ReleaseCutsceneCamera(float Blend);     // hand the view back to the player; destroy the owned camera actor
 
 	// smoke harness (-BRMissionSmoke[=id]): drives the player through the mission headless and logs PASS/FAIL
 	void TickSmoke(float Dt);
@@ -253,4 +265,8 @@ private:
 	bool bFadePendingTeleport = false;
 	FVector FadeTeleportLoc = FVector::ZeroVector;
 	float FadeTeleportYaw = 0.f;
+
+	// scripted cutscene camera (camera action): an owned ACameraActor we blend the view to, and release/destroy on
+	// mission end so gameplay never gets left looking through it.
+	TWeakObjectPtr<ACameraActor> CutsceneCam;
 };

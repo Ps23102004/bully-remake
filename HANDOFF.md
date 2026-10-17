@@ -115,9 +115,9 @@ Verified: `day_one` PASS 26/26 self-contained **and** as the chained pair, incl.
 
 **Arrival cutscene (this session, in-engine, no video gen):**
 - `Config/Missions/arrival.json` — kid dropped at the gates, faculty stand-in walks up and lays down rules, chains into `day_one`. Original dialogue + original characters.
-- Two new reusable mission primitives: `letterbox` (cinematic bars) + `say` (one dialogue line, speaker + text). HUD: eased letterbox bars + bottom dialogue box (`BullyHUD`).
+- Three new reusable mission primitives: `camera` (scripted cutscene framings — blend/cut to an owned `ACameraActor` aimed at the player/point/spot, with FOV; `release` hands the view back), `letterbox` (cinematic bars) + `say` (one dialogue line, speaker + text). HUD: eased letterbox bars + bottom dialogue box (`BullyHUD`). The owned camera is released on `StopMission`/`CompleteMission`/`Deinitialize`, so gameplay never gets left looking through it.
 - Faculty figure = existing `spawn_enemy` as a silent non-hostile stand-in (no friendly-NPC/branching-dialogue system yet).
 - `CompleteMission` now suppresses the "MISSION COMPLETE" end-card when a mission chains (its `on_complete` has a `start_mission`) → clean hand-off into gameplay.
-- Verified: `tools/ue/run_mission_smoke.sh arrival` → PASS 6/6, beats fire in order, no window, chains to `day_one`; `side_errand` re-smoked PASS 5/5 (no `CompleteMission` regression). Editor module rebuilds clean.
+- Verified: `tools/ue/run_mission_smoke.sh arrival` → PASS 6/6, all six camera cuts + dialogue lines fire in order, camera released, no window, chains to `day_one`; `side_errand` re-smoked PASS 5/5 (no `CompleteMission` regression). Editor module rebuilds clean.
 
-**Still unverified (headless can't settle):** combat *feel* (impact SFX/hit reactions/camera shake/tuning — owner's hands); a rendered play pass of the mission HUD / combat / gauntlet / **cutscene camera framing + timing**; Jimmy's start outfit; look-sensitivity defaults. The cutscene currently plays from the normal gameplay camera (no scripted camera rig) — a dedicated cutscene camera is the natural next step if the owner wants it more cinematic.
+**Still unverified (headless can't settle):** combat *feel* (impact SFX/hit reactions/camera shake/tuning — owner's hands); a rendered play pass of the mission HUD / combat / gauntlet / **cutscene camera *composition*** (logs confirm the cuts fire and the view blends, not that the shots are well framed — the coordinates are a first pass); Jimmy's start outfit; look-sensitivity defaults.
