@@ -63,7 +63,7 @@ An agent can help inspect and diagnose this project; it cannot guarantee compati
 
 ### `main`: campus exploration + the Day One opening slice
 
-Status checked **2026-10-16**, against commit [`bc0f782`](https://github.com/oh-ashen-one/bully-remake/commit/bc0f782b05d6e17e4c9c62ab1f1dcc8ae4b74341). `main` is the most up-to-date version of the project; the Day One opening work that previously lived on a separate branch has been merged in.
+Status checked **2026-10-17**, against commit [`ee28789`](https://github.com/oh-ashen-one/bully-remake/commit/ee28789). `main` is the most up-to-date version of the project; the Day One opening work that previously lived on a separate branch has been merged in.
 
 The repository's development records report these working on the development Mac:
 
@@ -80,9 +80,11 @@ The repository's development records report these working on the development Mac
 
 **Verification has limits.** Development notes record scripted collision checks, renders, and a 90-second fixed-timestep route capture. Those are not a fresh-install certification, a real-time performance benchmark, or proof that every part of the campus works. The original-game half of the side-by-side comparison is still pending. Footstep pitch and the overall live visual/audio feel still need hands-on review. Known rough edges include sprint foot sliding, missing start/stop/turn animations, walkers passing through each other, incomplete area testing, and material/lighting approximations. The settings code also needs checking in your actual play session.
 
-### The Day One opening slice is still in progress
+### The Day One opening slice: runs end-to-end, still needs a hands-on pass
 
-The opening-mission layer is playable to explore, but **not yet a seamless end-to-end mission.** Known open work, from the [handoff notes](HANDOFF.md): the schoolyard fight does not yet start on its own (the opponent is currently spawned from the console), the first two missions do not auto-chain, mission waypoint blips are dropped, and the epilogue transition is a rough teleport rather than a fade. Combat "feel" — impact effects, hit reactions, tuning — is unjudged and needs hands-on play, and the mission HUD, combat, and gauntlet have been checked in headless logs rather than a rendered play session. A headless test passing does not establish that a person can play the slice unaided. Treat this layer as an in-progress experiment on top of the campus prototype.
+The opening mission now runs start-to-finish in the framework: the first two missions auto-chain, the schoolyard fight spawns its own opponent (no console command), waypoint blips parse correctly, and the epilogue is a proper fade-to-black-and-back rather than a bare teleport. A headless playthrough (`-game -nullrhi`, no renderer) completes all 26 stages both as one combined `day_one` mission and as the two chained missions, including the deliberate fail/retry on the combo step.
+
+What remains is the part a headless log cannot settle: **combat "feel"** — impact effects, hit reactions, and tuning — is unjudged and needs hands-on play, and the mission, combat, and gauntlet have been checked in headless logs rather than a rendered play session. A headless test passing does not establish that a person can play the slice unaided, so treat the live feel as unverified until it has had a real play pass.
 
 ## Requirements and current setup blockers
 
