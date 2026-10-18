@@ -43,7 +43,7 @@
       "objective": "",
       "complete": { "type": "timer", "seconds": 4.6 },
       "on_start": [
-        { "type": "spawn_enemy", "distance_cm": 300, "player_invulnerable": true, "gate_attack": false, "gate_block": false },
+        { "type": "spawn_enemy", "distance_cm": 300, "player_invulnerable": true, "gate_attack": false, "gate_block": false, "mesh": "/Game/Imported/Characters/PFH1_Seth/SK_PFH1_Seth.SK_PFH1_Seth" },
         { "type": "camera", "location_cm": [29686, 8060, 835], "look_cm": [29686, 7223, 760], "fov": 50, "blend": 1.0 },
         { "type": "shake", "amp": 0.4, "seconds": 0.35 },
         { "type": "say", "speaker": "Prefect", "text": "So you're the new transfer. Stand up straight when I'm speaking to you.", "seconds": 4.4 }

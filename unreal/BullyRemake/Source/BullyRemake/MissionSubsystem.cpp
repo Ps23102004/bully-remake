@@ -174,6 +174,7 @@ namespace
 				if (O->TryGetBoolField(TEXT("player_invulnerable"), b)) { A.PlayerInvuln = b ? 1 : 0; }
 				if (O->TryGetBoolField(TEXT("gate_attack"), b)) { A.GateAttack = b ? 1 : 0; }
 				if (O->TryGetBoolField(TEXT("gate_block"), b)) { A.GateBlock = b ? 1 : 0; }
+				O->TryGetStringField(TEXT("mesh"), A.EnemyMesh);
 			}
 			else if (Type == TEXT("fade"))
 			{
@@ -749,7 +750,7 @@ void UMissionSubsystem::RunActions(const TArray<FMissionAction>& Actions)
 		{
 			ABullyCharacter* Player = Cast<ABullyCharacter>(GetPlayerPawn());
 			if (!Player) { UE_LOG(LogBullyMission, Warning, TEXT("BR_MISSION spawn_enemy: no player pawn")); break; }
-			ABullyCombatPawn* E = UBullyCombatTest::SpawnEnemyInFront(GetWorld(), Player, A.Dist, A.HealthFloor);
+			ABullyCombatPawn* E = UBullyCombatTest::SpawnEnemyInFront(GetWorld(), Player, A.Dist, A.HealthFloor, A.EnemyMesh);
 			if (E)
 			{
 				if (A.GateAttack >= 0) { E->bAttackAllowed = A.GateAttack != 0; }

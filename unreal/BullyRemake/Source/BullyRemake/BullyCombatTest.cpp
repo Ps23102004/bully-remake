@@ -89,7 +89,7 @@ static FAutoConsoleCommandWithWorldAndArgs GCombatReset(TEXT("Combat.Reset"), TE
 		}
 	}));
 
-ABullyCombatPawn* UBullyCombatTest::SpawnEnemyInFront(UWorld* W, ABullyCharacter* P, float Dist, float HealthFloor)
+ABullyCombatPawn* UBullyCombatTest::SpawnEnemyInFront(UWorld* W, ABullyCharacter* P, float Dist, float HealthFloor, const FString& MeshOverride)
 {
 	const FVector Fwd = P->GetActorForwardVector().GetSafeNormal2D();
 	const FVector At = P->GetActorLocation() + Fwd * Dist + FVector(0, 0, 20.f);
@@ -99,6 +99,9 @@ ABullyCombatPawn* UBullyCombatTest::SpawnEnemyInFront(UWorld* W, ABullyCharacter
 	ABullyCombatPawn* E = W->SpawnActor<ABullyCombatPawn>(ABullyCombatPawn::StaticClass(), At, (-Fwd).Rotation(), SP);
 	if (!E) { return nullptr; }
 	E->HealthFloor = HealthFloor;
+	// Optional per-spawn ped mesh (e.g. a prefect stand-in for a cutscene). Set before FinishSpawning so the pawn's
+	// PostInitializeComponents loads it instead of the Config default.
+	if (!MeshOverride.IsEmpty()) { E->PedMeshPath = MeshOverride; }
 	E->FinishSpawning(FTransform((-Fwd).Rotation(), At));
 	UE_LOG(LogBullyCombatTest, Display, TEXT("BR_COMBAT spawned %s at %s (%.0f cm ahead, floor %.0f, mesh %s)"), *E->GetName(), *E->GetActorLocation().ToString(),
 		Dist, HealthFloor, *E->PedMeshPath);

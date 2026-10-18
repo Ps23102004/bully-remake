@@ -33,7 +33,7 @@ public:
 	virtual ETickableTickType GetTickableTickType() const override { return ETickableTickType::Conditional; }
 
 	/** Spawns a sparring partner Dist cm in front of the player (console + test). */
-	static ABullyCombatPawn* SpawnEnemyInFront(UWorld* World, ABullyCharacter* Player, float Dist, float HealthFloor);
+	static ABullyCombatPawn* SpawnEnemyInFront(UWorld* World, ABullyCharacter* Player, float Dist, float HealthFloor, const FString& MeshOverride = FString());
 
 private:
 	enum class EStep : uint8 { Warmup, Setup, Block, Combo, Grapple, Push, GroundKick, FreeFight, Humiliate, Done };

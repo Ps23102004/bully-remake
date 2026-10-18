@@ -32,7 +32,8 @@
 //               { "type": "teleport", "point": "name" | "location_cm": [..], "yaw": 0 } | { "type": "log", "text": "..." }
 //               { "type": "start_mission", "mission": "<id>", "seconds": 1.0 }   // chain into the next mission after a beat
 //               { "type": "spawn_enemy", "distance_cm": 300, "health_floor": 5, "player_invulnerable": true,
-//                                        "gate_attack": true, "gate_block": true }   // self-spawn a sparring partner
+//                                        "gate_attack": true, "gate_block": true,
+//                                        "mesh": "/Game/Imported/Characters/PFH1_Seth/SK_PFH1_Seth.SK_PFH1_Seth" }  // sparring partner / cutscene stand-in (mesh optional)
 //               { "type": "fade", "out": 0.6, "hold": 0.5, "in": 0.9,              // cinematic fade-to-black and back;
 //                                 "point": "name" | "location_cm": [..], "yaw": 0 } // with a point, teleport at full black
 //               { "type": "reward", "money": 75, "respect": 15, "text": "..." }     // pay the persistent wallet + toast
@@ -86,6 +87,7 @@ struct FMissionAction
 	int32 PlayerInvuln = -1;     // -1 leave as-is, 0 clear, 1 set Jimmy invulnerable
 	int32 GateAttack = -1;       // -1 leave, 0/1 allow the spawned enemy to attack
 	int32 GateBlock = -1;        // -1 leave, 0/1 allow the spawned enemy to block
+	FString EnemyMesh;           // optional ped mesh override (/Game/Imported/Characters/<N>/SK_<N>.SK_<N>); empty = config default
 	// fade: cinematic fade-to-black -> (optional) teleport the player at full black -> fade back in. Seconds each.
 	// With a point/location, the teleport happens while the screen is black (no visible jump); Location/Yaw hold it.
 	float FadeOut = 0.5f, FadeHold = 0.4f, FadeIn = 0.8f;
