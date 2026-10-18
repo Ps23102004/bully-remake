@@ -117,6 +117,21 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Camera") bool bSnapToGroundOnBeginPlay = true;
 	/** slice-combat: while locked on, the camera yaw swings to frame the target at this rate (deg/s; 0 = off). */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Camera") float LockOnCameraYawRate = 240.f;
+
+	// --- camera shake (combat impacts, cutscene punches) -------------------------------------------------
+	/**
+	 * Additive shake applied to the follow camera's relative transform each tick (no UMG / no CameraShake asset,
+	 * matching the pure-C++ HUD). A shake is a decaying multi-frequency jitter: amplitude 1.0 = a firm hit.
+	 * Combat drives it from UBullyCombatComponent (hits landed / taken, scaled by reaction); the mission `shake`
+	 * action drives it for cutscene beats. Every magnitude is Config=Game.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|CameraShake") bool bCameraShake = true;
+	/** Peak camera translation (cm) at amplitude 1.0. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|CameraShake") float ShakeTranslateScale = 7.f;
+	/** Peak camera rotation (deg) at amplitude 1.0. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|CameraShake") float ShakeRotateScale = 1.3f;
+	/** Jitter base frequency (rough oscillations/s; per-axis multipliers detune it). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|CameraShake") float ShakeFrequency = 24.f;
 	/** Once-a-second BR_CHAR locomotion / foot-slide diagnostics (the combat pawn turns them off). */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Bully|Body") bool bLogLocomotion = true;
 
@@ -143,6 +158,8 @@ public:
 	void SnapCamera();
 	/** Called by scripts/input when the camera was steered explicitly (suspends auto-follow for CameraFollowDelay). */
 	void NoteLookInput() { LastLookInputTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0; }
+	/** Kick the follow camera: Amplitude ~1.0 = a firm hit, Duration in seconds. A stronger shake overrides a weaker lingering one. */
+	UFUNCTION(BlueprintCallable, Category = "Bully") void AddCameraShake(float Amplitude, float Duration);
 
 	// jump / land bookkeeping read by the anim instance and the evidence runner
 	int32 JumpCount = 0;
@@ -188,6 +205,7 @@ private:
 	void BuildInputAssets();
 	void UpdateGait();
 	void UpdateCamera(float Dt);
+	void UpdateCameraShake(float Dt);
 	void UpdateFootDiagnostics(float Dt);
 	void LoadJimmy();
 
@@ -224,6 +242,13 @@ private:
 	double LastLookInputTime = -100.0;
 	bool bHasJimmyMesh = false;
 	int32 LagRestoreFrames = 0;      // >0: boom lag is off for this many more ticks (SnapCamera)
+
+	// camera shake (decaying additive offset on FollowCamera's relative transform)
+	float ShakeAmp = 0.f;            // peak amplitude of the active shake
+	float ShakeDuration = 0.f;       // total length of the active shake (s)
+	float ShakeTimeLeft = 0.f;       // remaining (s)
+	float ShakePhase = 0.f;          // advancing oscillator phase
+	bool bShakeSettled = true;       // camera offset is currently zeroed
 
 	// foot-slide diagnostic: horizontal world speed of a planted foot (should be ~0)
 	FVector PrevFoot[2] = { FVector::ZeroVector, FVector::ZeroVector };

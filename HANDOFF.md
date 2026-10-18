@@ -1,6 +1,6 @@
 # HANDOFF — bully-remake
 
-**Updated:** 2026-10-17 · **Branch:** `phase0` (= `origin/main`; checkout `~/bully-remake`) · **Machine:** midirstudio (M3 Ultra Mac Studio)
+**Updated:** 2026-10-18 · **Branch:** `phase0` (= `origin/main`; checkout `~/bully-remake`) · **Machine:** midirstudio (M3 Ultra Mac Studio)
 
 ## Verified state
 
@@ -120,4 +120,12 @@ Verified: `day_one` PASS 26/26 self-contained **and** as the chained pair, incl.
 - `CompleteMission` now suppresses the "MISSION COMPLETE" end-card when a mission chains (its `on_complete` has a `start_mission`) → clean hand-off into gameplay.
 - Verified: `tools/ue/run_mission_smoke.sh arrival` → PASS 6/6, all six camera cuts + dialogue lines fire in order, camera released, no window, chains to `day_one`; `side_errand` re-smoked PASS 5/5 (no `CompleteMission` regression). Editor module rebuilds clean.
 
-**Still unverified (headless can't settle):** combat *feel* (impact SFX/hit reactions/camera shake/tuning — owner's hands); a rendered play pass of the mission HUD / combat / gauntlet / **cutscene camera *composition*** (logs confirm the cuts fire and the view blends, not that the shots are well framed — the coordinates are a first pass); Jimmy's start outfit; look-sensitivity defaults.
+**Impact camera shake (2026-10-18, this session):**
+- Pure-C++ additive shake on `ABullyCharacter`'s follow camera (decaying multi-frequency jitter on the camera's relative transform — no UMG, no `UCameraShakeBase` asset, matching the HUD's style). `AddCameraShake(Amplitude, Duration)`; a stronger shake overrides a weaker lingering tail. Config: `[/Script/BullyRemake.BullyCharacter]` `bCameraShake`/`ShakeTranslateScale` (7 cm)/`ShakeRotateScale` (1.3°)/`ShakeFrequency` (24).
+- `UBullyCombatComponent` drives it: `ShakePlayerCamera()` on a connecting hit in `ApplyHitTo` (player lands) and `EnterReaction` (player takes), scaled by a per-reaction weight (flinch .5 … KO 1.6) × Config `ShakeOnHitLand` (.45) / `ShakeOnHitTaken` (1.0). Non-player fighters never shake the camera.
+- New mission `shake` action (`{ "type": "shake", "amp": .., "seconds": .. }`) → cutscene impact beats; arrival uses a subtle one as the faculty member steps up.
+- Verified: `run_combat_nullrhi.sh` → **PASS 7/7**, 28 shake kicks, amplitudes 0.16–0.85 scaling by reaction, empty window watch. `run_mission_smoke.sh arrival` → **PASS 6/6** (t=29.7s), `BR_MISSION shake amp=0.40` → `BR_CHAR shake` fires at the prefect beat, all six camera cuts + release intact. Editor module rebuilds clean.
+
+**Backlog correction:** **look-sensitivity defaults are already DONE** (not a gap) — `ABullyCharacter` has `LookSensitivity`/`LookSensitivityX` (.6) / `LookSensitivityY` (.5) / `LookBaseDegPerCount` (.30) / gamepad rates / invert, all Config=Game with live Esc-menu sliders (`SBullySettingsMenu`) and user-config persistence. Hit *reactions* are also already implemented (flinch/stagger/knockdown/ground/KO clips + hitstop in `UBullyCombatComponent`).
+
+**Still unverified (headless can't settle, needs a rendered play pass / owner):** combat *feel* — impact **sound effects** (needs the right XACT cue + an audio pass) and the exact *magnitudes* of camera shake and hitstop (first-pass numbers; want eyes); a rendered play pass of the mission HUD / combat / gauntlet / **cutscene camera *composition*** (logs confirm the cuts fire and the view blends, not that the shots are well framed — the coordinates are a first pass); Jimmy's start outfit (needs a character import/render pass); the open-town import (owner-attended).

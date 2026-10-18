@@ -280,7 +280,55 @@ void ABullyCharacter::Tick(float DeltaSeconds)
 		MaxJumpRise = FMath::Max(MaxJumpRise, Z - LastJumpZ);
 	}
 	UpdateCamera(DeltaSeconds);
+	UpdateCameraShake(DeltaSeconds);
 	UpdateFootDiagnostics(DeltaSeconds);
+}
+
+void ABullyCharacter::AddCameraShake(float Amplitude, float Duration)
+{
+	if (!bCameraShake || Amplitude <= 0.f || Duration <= 0.f)
+	{
+		return;
+	}
+	// A stronger shake takes over; a weaker one does not stomp the tail of a bigger one still playing.
+	const float RemainingAmp = (ShakeDuration > 0.f) ? ShakeAmp * (ShakeTimeLeft / ShakeDuration) : 0.f;
+	if (Amplitude >= RemainingAmp)
+	{
+		ShakeAmp = Amplitude;
+		ShakeDuration = Duration;
+		ShakeTimeLeft = Duration;
+		UE_LOG(LogBullyChar, Display, TEXT("BR_CHAR shake amp=%.2f dur=%.2f"), Amplitude, Duration);
+	}
+}
+
+void ABullyCharacter::UpdateCameraShake(float Dt)
+{
+	if (!FollowCamera)
+	{
+		return;
+	}
+	if (ShakeTimeLeft <= 0.f)
+	{
+		if (!bShakeSettled)
+		{
+			FollowCamera->SetRelativeLocation(FVector::ZeroVector);
+			FollowCamera->SetRelativeRotation(FRotator::ZeroRotator);
+			bShakeSettled = true;
+		}
+		return;
+	}
+	ShakeTimeLeft = FMath::Max(0.f, ShakeTimeLeft - Dt);
+	ShakePhase += Dt * ShakeFrequency;
+	// Squared decay envelope so the shake dies out smoothly rather than cutting off.
+	const float Env = (ShakeDuration > 0.f) ? (ShakeTimeLeft / ShakeDuration) : 0.f;
+	const float A = ShakeAmp * Env * Env;
+	const float t = ShakePhase * 2.f * PI;
+	// Detuned per-axis oscillators (multipliers near 1, offset phases) read as an organic jolt, not a sine wobble.
+	const FVector Loc(FMath::Sin(t * 1.00f), FMath::Sin(t * 1.27f + 1.3f), FMath::Sin(t * 0.91f + 2.1f));
+	const FRotator Rot(FMath::Sin(t * 1.33f + 2.4f) /*pitch*/, FMath::Sin(t * 0.97f + 4.0f) /*yaw*/, FMath::Sin(t * 1.13f + 0.7f) /*roll*/);
+	FollowCamera->SetRelativeLocation(Loc * (A * ShakeTranslateScale));
+	FollowCamera->SetRelativeRotation(Rot * (A * ShakeRotateScale));
+	bShakeSettled = false;
 }
 
 void ABullyCharacter::UpdateCamera(float Dt)

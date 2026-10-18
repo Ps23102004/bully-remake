@@ -42,6 +42,7 @@
 //                                   "look": "player" | "<point>" | "look_cm": [..],  //   aimed at the player, a point, or a spot
 //                                   "fov": 50, "blend": 1.2 }                         //   (blend 0 = hard cut)
 //               { "type": "camera", "release": true, "blend": 0.8 }                  // hand the view back to the player's camera
+//               { "type": "shake", "amp": 1.0, "seconds": 0.3 }                      // kick the player's camera (impact beats)
 #pragma once
 
 #include "CoreMinimal.h"
@@ -71,7 +72,7 @@ struct FMissionCondition
 
 struct FMissionAction
 {
-	enum class EType : uint8 { Hint, Banner, Event, SetFlag, ClearFlag, Teleport, Log, StartMission, SpawnEnemy, Fade, Reward, Letterbox, Say, Camera };
+	enum class EType : uint8 { Hint, Banner, Event, SetFlag, ClearFlag, Teleport, Log, StartMission, SpawnEnemy, Fade, Reward, Letterbox, Say, Camera, Shake };
 	EType Type = EType::Log;
 	FString Text, Sub;
 	FName Name;
@@ -98,6 +99,8 @@ struct FMissionAction
 	FVector Look = FVector::ZeroVector;
 	bool bHasLook = false, bLookPlayer = false, bRelease = false;
 	float Fov = 0.f, Blend = 0.5f;
+	// shake: Amp = shake amplitude (1.0 = a firm hit), Seconds = duration.
+	float Amp = 1.f;
 };
 
 struct FMissionStage
@@ -221,6 +224,7 @@ private:
 	void SetCameraFade(float Alpha);   // 0 = clear, 1 = full black, via the player camera manager
 	void ApplyCamera(const FMissionAction& A);   // cut/blend to (or release) the scripted cutscene camera
 	void ReleaseCutsceneCamera(float Blend);     // hand the view back to the player; destroy the owned camera actor
+	void ApplyShake(const FMissionAction& A);    // kick the player's camera (cutscene impact beats)
 
 	// smoke harness (-BRMissionSmoke[=id]): drives the player through the mission headless and logs PASS/FAIL
 	void TickSmoke(float Dt);

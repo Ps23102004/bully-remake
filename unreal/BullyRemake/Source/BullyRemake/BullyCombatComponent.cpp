@@ -2,6 +2,7 @@
 #include "BullyCombatComponent.h"
 
 #include "Animation/AnimSequence.h"
+#include "BullyCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
@@ -36,6 +37,21 @@ namespace
 		case EBullyHitReaction::KO: return TEXT("ko");
 		}
 		return TEXT("?");
+	}
+
+	// Relative camera-shake weight per reaction: a light flinch barely registers, a KO rocks the frame.
+	float ReactionShake(EBullyHitReaction R)
+	{
+		switch (R)
+		{
+		case EBullyHitReaction::None: return 0.35f;
+		case EBullyHitReaction::Flinch: return 0.5f;
+		case EBullyHitReaction::Stagger: return 0.85f;
+		case EBullyHitReaction::Knockdown: return 1.3f;
+		case EBullyHitReaction::GroundHit: return 0.6f;
+		case EBullyHitReaction::KO: return 1.6f;
+		}
+		return 0.5f;
 	}
 
 	float CapsuleRadius(const AActor* A)
@@ -338,6 +354,15 @@ void UBullyCombatComponent::StartHitStop(float Seconds)
 	if (Seconds <= 0.f || !GetWorld()) { return; }
 	GetOwner()->CustomTimeDilation = HitStopDilation;
 	HitStopUntil = FMath::Max(HitStopUntil, GetWorld()->GetTimeSeconds() + Seconds);
+}
+
+void UBullyCombatComponent::ShakePlayerCamera(float Amplitude)
+{
+	if (Amplitude <= 0.f) { return; }
+	if (ABullyCharacter* C = Cast<ABullyCharacter>(GetCharacter()))
+	{
+		C->AddCameraShake(Amplitude, ShakeDuration);
+	}
 }
 
 FName UBullyCombatComponent::PickClip(const TArray<FName>& Clips, FName Fallback)
@@ -724,6 +749,8 @@ void UBullyCombatComponent::ApplyHitTo(UBullyCombatComponent* V, const FBullyCom
 	{
 		return;
 	}
+	// juice: the player's camera kicks on a connecting hit, scaled by how hard it landed
+	ShakePlayerCamera(ShakeOnHitLand * ReactionShake(M.Reaction));
 	// tutorial events (the player's side)
 	if (bInLightChain || M.Name == LightChainStart)
 	{
@@ -917,6 +944,11 @@ void UBullyCombatComponent::EnterReaction(EBullyHitReaction R, UBullyCombatCompo
 		Fire(TEXT("knocked_out"));
 		FireMission(IsPlayer() ? FName(TEXT("player_knocked_out")) : FName(TEXT("enemy_knocked_out")));
 		break;
+	}
+	// juice: taking a hit rocks the player's camera harder than landing one
+	if (IsPlayer())
+	{
+		ShakePlayerCamera(ShakeOnHitTaken * ReactionShake(R));
 	}
 }
 

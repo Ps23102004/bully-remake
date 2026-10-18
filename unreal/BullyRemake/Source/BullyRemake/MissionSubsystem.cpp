@@ -217,6 +217,12 @@ namespace
 					double F = 0.0; if (O->TryGetNumberField(TEXT("fov"), F)) { A.Fov = float(F); }
 				}
 			}
+			else if (Type == TEXT("shake"))
+			{
+				A.Type = FMissionAction::EType::Shake;
+				double Am = 0.0; if (O->TryGetNumberField(TEXT("amp"), Am)) { A.Amp = FMath::Max(0.f, float(Am)); }
+				if (!O->HasField(TEXT("seconds"))) { A.Seconds = 0.3f; }
+			}
 			else { Err = FString::Printf(TEXT("unknown action type \"%s\""), *Type); return false; }
 			Out.Add(MoveTemp(A));
 		}
@@ -768,7 +774,19 @@ void UMissionSubsystem::RunActions(const TArray<FMissionAction>& Actions)
 		case FMissionAction::EType::Camera:
 			ApplyCamera(A);
 			break;
+		case FMissionAction::EType::Shake:
+			ApplyShake(A);
+			break;
 		}
+	}
+}
+
+void UMissionSubsystem::ApplyShake(const FMissionAction& A)
+{
+	if (ABullyCharacter* C = Cast<ABullyCharacter>(GetPlayerPawn()))
+	{
+		C->AddCameraShake(A.Amp, A.Seconds);
+		UE_LOG(LogBullyMission, Display, TEXT("BR_MISSION shake amp=%.2f dur=%.2f"), A.Amp, A.Seconds);
 	}
 }
 

@@ -206,6 +206,12 @@ public:
 	/** Actor time dilation during hitstop (0.02 = near freeze). */
 	UPROPERTY(Config, EditAnywhere, Category = "Combat|Feel") float HitStopDilation = 0.05f;
 	UPROPERTY(Config, EditAnywhere, Category = "Combat|Feel") bool bLogCombat = true;
+	/** Camera-shake amplitude the player's camera gets when Jimmy LANDS a hit (x the reaction weight). 0 = off. */
+	UPROPERTY(Config, EditAnywhere, Category = "Combat|Feel") float ShakeOnHitLand = 0.45f;
+	/** Camera-shake amplitude when the player TAKES a hit (x the reaction weight). Taking a hit shakes harder. */
+	UPROPERTY(Config, EditAnywhere, Category = "Combat|Feel") float ShakeOnHitTaken = 1.0f;
+	/** Shake duration (s) for a combat impact. */
+	UPROPERTY(Config, EditAnywhere, Category = "Combat|Feel") float ShakeDuration = 0.25f;
 
 	// --- runtime state ---------------------------------------------------------------------------------------
 	UPROPERTY(EditAnywhere, Category = "Combat") EBullyCombatTeam Team = EBullyCombatTeam::Player;
@@ -284,6 +290,8 @@ private:
 	void FaceToward(const FVector& Where, float MaxStepDeg);
 	void Push(const FVector& Dir, float Distance, float Time);
 	void StartHitStop(float Seconds);
+	/** Kick the player's follow camera when Jimmy is in a hit (no-op for non-player fighters / no ABullyCharacter). */
+	void ShakePlayerCamera(float Amplitude);
 	void Fire(FName Event);
 	void FireMission(FName Event);
 	void Note(const FString& S) const;
