@@ -226,6 +226,30 @@ private:
 	void ReleaseCutsceneCamera(float Blend);     // hand the view back to the player; destroy the owned camera actor
 	void ApplyShake(const FMissionAction& A);    // kick the player's camera (cutscene impact beats)
 
+	// rendered cutscene capture (-BRMissionShots=<id> in a -game -RenderOffScreen run): grab one HighResShot a beat
+	// after each stage begins -- real mission cameras, spawned characters, the authored framings -- so the cutscene
+	// composition gets a pixel pass (headless logs confirm the cuts fire; only a render shows what they frame).
+	void TickMissionShots(float Dt);
+	struct FMissionShots
+	{
+		bool bEnabled = false;
+		FString MissionId;
+		FString Dir;
+		int32 ResX = 1920, ResY = 1080;
+		double Warmup = 2.0;           // extra settle after compile-idle before the mission starts
+		double ShotDelay = 1.9;        // after a stage begins, wait this long (camera blend + Lumen settle) then shoot
+		double CompileReadyAt = -1.0;  // world time shaders/assets went (and stayed) idle; <0 = still compiling
+		double IdleSince = -1.0;
+		double LastCompileLog = -100.0;
+		bool bStarted = false;
+		int32 TotalStages = 0;         // stages in the captured mission (it may chain into another -- we stop after these)
+		int32 PendingStage = -1;       // stage index of the pending shot, or -1
+		double PendingAt = -1.0;       // world time to fire the pending shot
+		FString PendingName;           // file stem for the pending shot
+		int32 Count = 0;               // shots taken
+		double QuitAt = -1.0;          // world time to quit after the last shot; <0 = not scheduled
+	} Shots;
+
 	// smoke harness (-BRMissionSmoke[=id]): drives the player through the mission headless and logs PASS/FAIL
 	void TickSmoke(float Dt);
 	struct FSmoke

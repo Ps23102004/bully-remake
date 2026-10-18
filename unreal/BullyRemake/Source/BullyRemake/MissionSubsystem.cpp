@@ -28,6 +28,13 @@
 #include "MissionTrigger.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "UnrealClient.h"
+#include "HighResScreenshot.h"
+#include "Engine/GameViewportClient.h"
+#if WITH_EDITOR
+#include "AssetCompilingManager.h"
+#include "ShaderCompiler.h"
+#endif
 
 DEFINE_LOG_CATEGORY_STATIC(LogBullyMission, Log, All);
 
@@ -339,8 +346,26 @@ void UMissionSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 		AutoStartAt = InWorld.GetTimeSeconds() + 1.0;
 		UE_LOG(LogBullyMission, Display, TEXT("BR_MISSION boot mission '%s' (config BootMission)"), *BootMission);
 	}
+	FString ShotsId;
+	if (FParse::Value(FCommandLine::Get(), TEXT("-BRMissionShots="), ShotsId) && !ShotsId.IsEmpty())
+	{
+		// Rendered cutscene-composition pass. We own the mission start (after compile settles), so cancel any
+		// -BRMission= auto-start that would otherwise fire during shader compilation.
+		Shots.bEnabled = true;
+		Shots.MissionId = ShotsId;
+		PendingAutoStart.Reset();
+		if (!FParse::Value(FCommandLine::Get(), TEXT("-BRShotDir="), Shots.Dir) || Shots.Dir.IsEmpty())
+		{
+			Shots.Dir = FPaths::ProjectSavedDir() / TEXT("MissionShots");
+		}
+		int32 V = 0;
+		if (FParse::Value(FCommandLine::Get(), TEXT("-BRShotResX="), V) && V > 0) { Shots.ResX = V; }
+		if (FParse::Value(FCommandLine::Get(), TEXT("-BRShotResY="), V) && V > 0) { Shots.ResY = V; }
+		IFileManager::Get().MakeDirectory(*Shots.Dir, true);
+		UE_LOG(LogBullyMission, Display, TEXT("BR_MISSIONSHOT capture armed: mission '%s' -> %s at %dx%d"), *Shots.MissionId, *Shots.Dir, Shots.ResX, Shots.ResY);
+	}
 	FString SmokeId;
-	if (FParse::Param(FCommandLine::Get(), TEXT("BRMissionSmoke")) || FParse::Value(FCommandLine::Get(), TEXT("-BRMissionSmoke="), SmokeId))
+	if (!Shots.bEnabled && (FParse::Param(FCommandLine::Get(), TEXT("BRMissionSmoke")) || FParse::Value(FCommandLine::Get(), TEXT("-BRMissionSmoke="), SmokeId)))
 	{
 		Smoke.bEnabled = true;
 		Smoke.MissionId = SmokeId.IsEmpty() ? TEXT("smoke_day_one") : SmokeId;
@@ -654,6 +679,15 @@ void UMissionSubsystem::BeginStage(int32 Index, bool bRetry)
 		bRetry ? TEXT(" (retry)") : TEXT(""), *CondText(St.Complete), St.Fail.IsValid() ? *FString::Printf(TEXT("; fail: %s"), *CondText(St.Fail)) : TEXT(""));
 	RunActions(St.OnStart);
 	OnStageBegan.Broadcast(*Mission, Index);
+
+	if (Shots.bEnabled && Index < Shots.TotalStages && Shots.Count < Shots.TotalStages)
+	{
+		// Shoot this beat once the camera has finished blending and Lumen has settled. One shot per stage, newest wins.
+		// (TotalStages/Count also fence this off from any mission the captured one chains into on completion.)
+		Shots.PendingStage = Index;
+		Shots.PendingAt = GetWorld()->GetTimeSeconds() + Shots.ShotDelay;
+		Shots.PendingName = FString::Printf(TEXT("%02d_%s"), Index, St.Id.IsNone() ? TEXT("stage") : *St.Id.ToString());
+	}
 }
 
 void UMissionSubsystem::CompleteStage()
@@ -1144,6 +1178,7 @@ void UMissionSubsystem::Tick(float Dt)
 		StartMission(Id);
 	}
 	if (Smoke.bEnabled) { TickSmoke(Dt); }
+	if (Shots.bEnabled) { TickMissionShots(Dt); }
 	TickFade(Dt);
 	if (Hud.IsValid()) { Hud->Tick(Dt); }
 
@@ -1176,6 +1211,91 @@ void UMissionSubsystem::LogStatus() const
 	FVector T = FVector::ZeroVector; const bool bT = StageTarget(T);
 	UE_LOG(LogBullyMission, Display, TEXT("BR_MISSION status: %s state=%d stage %d/%d '%s' attempt=%d target=%s flags=%d"),
 		*Mission->Id, int32(State), StageIndex + 1, Mission->Stages.Num(), *St.Objective, Attempt, bT ? *T.ToCompactString() : TEXT("none"), Flags.Num());
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// rendered cutscene capture (-BRMissionShots)
+
+void UMissionSubsystem::TickMissionShots(float Dt)
+{
+	UWorld* World = GetWorld();
+	if (!World) { return; }
+	const double Now = World->GetTimeSeconds();
+
+	// 1) Hold the mission start until on-demand shader/texture/distance-field compilation drains (uncooked -game),
+	//    plus a warm-up, so the very first beat isn't captured through a half-compiled scene.
+	if (!Shots.bStarted)
+	{
+		if (!GetPlayerPawn()) { return; }
+		int32 Assets = 0, ShaderJobs = 0;
+#if WITH_EDITOR
+		Assets = FAssetCompilingManager::Get().GetNumRemainingAssets();
+		ShaderJobs = GShaderCompilingManager ? GShaderCompilingManager->GetNumRemainingJobs() : 0;
+#endif
+		if (Assets == 0 && ShaderJobs == 0) { if (Shots.IdleSince < 0.0) { Shots.IdleSince = Now; } }
+		else { Shots.IdleSince = -1.0; }
+		if (Now - Shots.LastCompileLog >= 10.0)
+		{
+			Shots.LastCompileLog = Now;
+			UE_LOG(LogBullyMission, Display, TEXT("BR_MISSIONSHOT waiting for compilation: %d assets, %d shader jobs (t=%.0f)"), Assets, ShaderJobs, Now);
+		}
+		const bool bIdle = Shots.IdleSince >= 0.0 && Now - Shots.IdleSince >= 3.0;
+		if (!bIdle) { return; }
+		if (Shots.CompileReadyAt < 0.0)
+		{
+			Shots.CompileReadyAt = Now;
+			UE_LOG(LogBullyMission, Display, TEXT("BR_MISSIONSHOT compilation idle at t=%.1f; warm-up %.1f s"), Now, Shots.Warmup);
+		}
+		if (Now - Shots.CompileReadyAt < Shots.Warmup) { return; }
+
+		Shots.bStarted = true;
+		if (!StartMission(Shots.MissionId))
+		{
+			UE_LOG(LogBullyMission, Error, TEXT("BR_MISSIONSHOT mission '%s' failed to load; quitting"), *Shots.MissionId);
+			GEngine->Exec(World, TEXT("quit"));
+			return;
+		}
+		Shots.TotalStages = Mission.IsValid() ? Mission->Stages.Num() : 0;
+		// StartMission already ran BeginStage(0) while TotalStages was still 0 (so its hook skipped) -- schedule
+		// stage 0's shot here now that the count is known.
+		if (Shots.TotalStages > 0 && State == EState::Running)
+		{
+			Shots.PendingStage = StageIndex;
+			Shots.PendingAt = Now + Shots.ShotDelay;
+			const FMissionStage& St0 = Mission->Stages[StageIndex];
+			Shots.PendingName = FString::Printf(TEXT("%02d_%s"), StageIndex, St0.Id.IsNone() ? TEXT("stage") : *St0.Id.ToString());
+		}
+		UE_LOG(LogBullyMission, Display, TEXT("BR_MISSIONSHOT mission '%s' started: %d stage(s) to capture"), *Shots.MissionId, Shots.TotalStages);
+		return;
+	}
+
+	// 2) Fire the pending beat shot once its settle delay has passed (re-render at the requested size).
+	if (Shots.PendingAt >= 0.0 && Now >= Shots.PendingAt)
+	{
+		const FString File = Shots.Dir / (Shots.PendingName + TEXT(".png"));
+		FHighResScreenshotConfig& HR = GetHighResScreenshotConfig();
+		HR.SetResolution(uint32(Shots.ResX), uint32(Shots.ResY), 1.0f);
+		HR.SetFilename(File);
+		HR.bMaskEnabled = false;
+		HR.bDumpBufferVisualizationTargets = false;
+		const bool bOk = GEngine->GameViewport && GEngine->GameViewport->Viewport
+			&& GEngine->GameViewport->Viewport->TakeHighResScreenShot();
+		UE_LOG(LogBullyMission, Display, TEXT("BR_MISSIONSHOT %s stage %d -> %s (t=%.1f)"),
+			bOk ? TEXT("shot") : TEXT("REFUSED"), Shots.PendingStage + 1, *File, Now);
+		++Shots.Count;
+		Shots.PendingStage = -1;
+		Shots.PendingAt = -1.0;
+		// After the last stage's shot, let the capture flush, then quit before the mission chains onward.
+		if (Shots.Count >= Shots.TotalStages) { Shots.QuitAt = Now + 2.0; }
+	}
+
+	// 3) Done: quit cleanly (the arrival mission would otherwise chain straight into day_one).
+	if (Shots.QuitAt >= 0.0 && Now >= Shots.QuitAt)
+	{
+		UE_LOG(LogBullyMission, Display, TEXT("BR_MISSIONSHOT done: %d/%d shot(s) in %s; quitting"), Shots.Count, Shots.TotalStages, *Shots.Dir);
+		Shots.QuitAt = -1.0;
+		GEngine->Exec(World, TEXT("quit"));
+	}
 }
 
 // ---------------------------------------------------------------------------------------------------------------
