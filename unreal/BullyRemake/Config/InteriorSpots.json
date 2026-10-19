@@ -1,0 +1,125 @@
+{
+ "_note": "BRGo console teleport spots, derived from the import manifest (median XY of the pocket's placements, min z + 120; runtime floor-snaps)",
+ "spots": {
+  "ischool": {
+   "location_cm": [
+    -62928,
+    30102,
+    -831
+   ],
+   "scene": "ischool"
+  },
+  "art": {
+   "location_cm": [
+    -53172,
+    -38255,
+    1555
+   ],
+   "scene": "isc_art"
+  },
+  "audt": {
+   "location_cm": [
+    -76966,
+    -29620,
+    7852
+   ],
+   "scene": "isc_audt"
+  },
+  "auto": {
+   "location_cm": [
+    -40889,
+    -37203,
+    8206
+   ],
+   "scene": "isc_auto"
+  },
+  "bio": {
+   "location_cm": [
+    -70905,
+    -31879,
+    3456
+   ],
+   "scene": "isc_bio"
+  },
+  "boil": {
+   "location_cm": [
+    -74986,
+    7148,
+    664
+   ],
+   "scene": "isc_boil"
+  },
+  "chem": {
+   "location_cm": [
+    -59640,
+    -32349,
+    3542
+   ],
+   "scene": "isc_chem"
+  },
+  "clas": {
+   "location_cm": [
+    -55748,
+    -32139,
+    -201
+   ],
+   "scene": "isc_clas"
+  },
+  "dorm": {
+   "location_cm": [
+    -49934,
+    -31625,
+    3260
+   ],
+   "scene": "isc_dorm"
+  },
+  "gdrm": {
+   "location_cm": [
+    -43145,
+    -31111,
+    -673
+   ],
+   "scene": "isc_Gdrm"
+  },
+  "lib": {
+   "location_cm": [
+    -77229,
+    -20296,
+    9132
+   ],
+   "scene": "isc_lib"
+  },
+  "offi": {
+   "location_cm": [
+    -70129,
+    -20889,
+    3307
+   ],
+   "scene": "isc_offi"
+  },
+  "pool": {
+   "location_cm": [
+    -65390,
+    5971,
+    5540
+   ],
+   "scene": "isc_pool"
+  },
+  "prep": {
+   "location_cm": [
+    -53116,
+    -13369,
+    4659
+   ],
+   "scene": "isc_prep"
+  },
+  "staf": {
+   "location_cm": [
+    -64937,
+    -22594,
+    80
+   ],
+   "scene": "isc_staf"
+  }
+ }
+}

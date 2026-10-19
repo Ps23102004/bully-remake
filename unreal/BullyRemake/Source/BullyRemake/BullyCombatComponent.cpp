@@ -823,6 +823,18 @@ UBullyCombatComponent::EHitResult UBullyCombatComponent::ReceiveHit(UBullyCombat
 	else if (MinHealth > 0.f && Health <= MinHealth)
 	{
 		Health = MinHealth;
+		// tutorial guard (mission flag combat_no_beaten): the sparring partner can be hit, staggered and knocked
+		// down, but never enters the terminal Beaten state (a Beaten enemy stops attacking, which soft-locks the
+		// block stages). A floor hit while the flag is set reads as a normal hit instead.
+		if (!IsPlayer())
+		{
+			const UMissionSubsystem* MS = UMissionSubsystem::Get(GetWorld());
+			if (MS && MS->HasFlag(TEXT("combat_no_beaten")))
+			{
+				EnterReaction(IsDown() ? EBullyHitReaction::GroundHit : M.Reaction, Attacker, &M);
+				return EHitResult::Hit;
+			}
+		}
 		if (Partner.IsValid() && Partner.Get() != Attacker)
 		{
 			Partner->Partner.Reset();

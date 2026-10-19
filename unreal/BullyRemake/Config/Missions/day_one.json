@@ -62,6 +62,13 @@
         -31800,
         3191
       ]
+    },
+    "door_ext_out": {
+      "location_cm": [
+        21320,
+        7330,
+        950
+      ]
     }
   },
   "triggers": [
@@ -290,18 +297,44 @@
       "id": "leave_office",
       "objective": "Head back down to the entrance hall.",
       "complete": {
-        "type": "reach_location",
-        "point": "lobby",
-        "radius_cm": 450,
-        "z_tolerance_cm": 300
+        "type": "any",
+        "conditions": [
+          {
+            "type": "reach_location",
+            "point": "lobby",
+            "radius_cm": 450,
+            "z_tolerance_cm": 300
+          },
+          {
+            "type": "trigger_enter",
+            "trigger": "door_int"
+          },
+          {
+            "type": "reach_location",
+            "point": "door_ext_out",
+            "radius_cm": 900,
+            "z_tolerance_cm": 600
+          }
+        ]
       }
     },
     {
       "id": "exit_building",
       "objective": "Leave the main building.",
       "complete": {
-        "type": "trigger_enter",
-        "trigger": "door_int"
+        "type": "any",
+        "conditions": [
+          {
+            "type": "trigger_enter",
+            "trigger": "door_int"
+          },
+          {
+            "type": "reach_location",
+            "point": "door_ext_out",
+            "radius_cm": 900,
+            "z_tolerance_cm": 600
+          }
+        ]
       }
     },
     {
@@ -340,6 +373,10 @@
         {
           "type": "set_flag",
           "name": "combat_ai_noblock"
+        },
+        {
+          "type": "set_flag",
+          "name": "combat_no_beaten"
         },
         {
           "type": "event",
@@ -579,6 +616,10 @@
         "yaw": 90
       },
       "on_start": [
+        {
+          "type": "clear_flag",
+          "name": "combat_no_beaten"
+        },
         {
           "type": "clear_flag",
           "name": "combat_ai_passive"

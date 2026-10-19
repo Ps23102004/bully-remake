@@ -274,6 +274,29 @@ public:
 				]
 			]
 
+			// controls legend, bottom left (always on; hidden while cinematic bars are up)
+			+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom).Padding(FMargin(28.f, 0.f, 0.f, 22.f))
+			[
+				SNew(SBox)
+				.Visibility_Lambda([S]() { return S->Letterbox > 0.004f ? EVisibility::Collapsed : EVisibility::HitTestInvisible; })
+				[
+					SNew(SBorder).BorderImage(White).BorderBackgroundColor(FLinearColor(0.03f, 0.03f, 0.05f, 0.45f)).Padding(FMargin(12.f, 6.f, 14.f, 7.f))
+					[
+						SNew(SVerticalBox)
+						+ SVerticalBox::Slot().AutoHeight()
+						[
+							SNew(STextBlock).Font(Small).ColorAndOpacity(Dim)
+							.Text(FText::FromString(TEXT("MOVE WASD    WALK ALT    SPRINT SHIFT    JUMP SPACE    INTERACT E    MENU ESC")))
+						]
+						+ SVerticalBox::Slot().AutoHeight().Padding(0, 3, 0, 0)
+						[
+							SNew(STextBlock).Font(Small).ColorAndOpacity(Dim)
+							.Text(FText::FromString(TEXT("ATTACK LMB    BLOCK hold Q    GRAPPLE F    LOCK-ON hold RMB")))
+						]
+					]
+				]
+			]
+
 			// button prompt, lower centre
 			+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(FMargin(0.f, 0.f, 0.f, 170.f))
 			[

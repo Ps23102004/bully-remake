@@ -134,3 +134,47 @@ Verified: `day_one` PASS 26/26 self-contained **and** as the chained pair, incl.
 **Backlog correction:** **look-sensitivity defaults are already DONE** (not a gap) — `ABullyCharacter` has `LookSensitivity`/`LookSensitivityX` (.6) / `LookSensitivityY` (.5) / `LookBaseDegPerCount` (.30) / gamepad rates / invert, all Config=Game with live Esc-menu sliders (`SBullySettingsMenu`) and user-config persistence. Hit *reactions* are also already implemented (flinch/stagger/knockdown/ground/KO clips + hitstop in `UBullyCombatComponent`).
 
 **Still unverified (headless can't settle, needs a rendered play pass / owner):** combat *feel* — impact **sound effects** (needs the right XACT cue + an audio pass) and the exact *magnitudes* of camera shake and hitstop (first-pass numbers; want eyes — a *motion* video pass, since the composition stills settle before the 0.35 s shake kick); a rendered play pass of the mission **HUD / combat / gauntlet** (the arrival **cutscene camera composition is now verified** via `run_mission_shots.sh` — framings good, one defect: grey-primitive faculty stand-in, see above); Jimmy's start outfit (needs a character import/render pass); the open-town import (owner-attended).
+
+## Owner playtest session (2026-10-19, MacBook Pro M5 "Mac-324", merged to main)
+
+First setup on a second machine (owner's laptop; Studio remains the dev box). UE 5.8.3 via Epic launcher, game files
+copied from the Studio install, full importer + UE import chain ran clean (2,552 placements, 2 door links, 0 errors).
+Owner played the arrival -> day_one slice hands-on for the first time. Fixes landed this session:
+
+- **Block-tutorial soft-lock fixed**: new mission flag `combat_no_beaten` (set at `fight_intro`, cleared at `free_fight`
+  in `day_one` + `1_02`): while set, a floor hit on the sparring partner reads as a normal hit instead of entering the
+  terminal Beaten state (a Beaten enemy stops attacking -> `block_success` could never fire). `BullyCombatComponent::ReceiveHit`.
+- **Controls legend**: always-on bottom-left HUD panel (move/walk/sprint/jump/interact/menu + attack/block/grapple/lock-on),
+  hidden while letterbox is up (`BullyHUD.cpp`).
+- **Stage soft-locks from thin triggers**: `leave_office` and `exit_building` now complete via `any` with fallbacks
+  (`door_int` trigger OR arriving campus-side at new point `door_ext_out`). Root cause: the door-link teleport races the
+  50 cm mission trigger box, and the stage blip then points at the interior pocket ~900 m away. Same pattern may lurk in
+  other missions - see backlog.
+- **Real fight opponents**: `GN_Bully05` imported with the full 439-clip bank (fight was a grey placeholder on any machine
+  that never imported it; Config `PedMeshPath` default), gauntlet peds `GN_Bully01-04` + gestures via `run_import_npc.sh`.
+- **Interior exploration cheats**: `BRGo <spot>` console exec on `ABullyCharacter` + number row 1..0 bindings
+  (pool/audt/lib/chem/bio/art/auto/boil/clas/gdrm), spots in `Config/InteriorSpots.json` (derived from the manifest,
+  floor-snapped at runtime). Temporary stand-in until real door links exist.
+
+**Observed, not yet fixed:** a crowd student (GN_Asiangirl) renders with mangled arms during the fight-crowd gestures -
+clip data verified complete (all 36 joints animated in every gesture clip), so it is a runtime blend bug in the
+scripted-NPC gesture path; needs a repro render of the crowd beat (`run_mission_shots.sh` around stage 11+) or an
+owner screenshot.
+
+## Backlog (owner-reviewed 2026-10-19, in priority order)
+
+1. **Crowd gesture arm corruption** (above) - diagnose via rendered crowd capture; suspect `BullyScriptedNPC` gesture
+   blend, not the data.
+2. **Mission robustness pass**: audit every `trigger_enter` / `reach_location` completion in all missions for the
+   thin-trigger/teleport race; add `any` fallbacks like `leave_office`; add a headless smoke variant that drives stages
+   the "wrong" way (skip triggers, overshoot points).
+3. **Combat impact SFX**: extract punch/hit cues from the game's XACT banks (cue graph already decoded,
+   docs/re-notes/audio-formats.md) and wire into `UBullyCombatComponent` hit events; then owner-tune shake/hitstop
+   magnitudes (first-pass numbers in DefaultGame.ini).
+4. **Real door links for interiors**: author doorway pairs (pool, library, auditorium, gym, dorms, labs...) in
+   `tools/ue/door_links.json` + `run_place_doors.sh`; replaces the BRGo cheat.
+5. **Interior lighting/material pass** for the never-walked pockets (owner exploration will surface the worst rooms).
+6. **Town import** (the big unlock): extend the world importer beyond the academy scenes to the town districts;
+   owner-attended pass per README.
+7. Known debts: sprint foot-slide, start/stop/turn anims, walker-vs-walker collision, Jimmy's start outfit,
+   footstep pitch by-ear check.

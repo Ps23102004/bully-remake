@@ -23,6 +23,10 @@
 #include "InputMappingContext.h"
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
+#include "Misc/FileHelper.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "Misc/ConfigCacheIni.h"
 #include "InputModifiers.h"
 #include "UObject/ConstructorHelpers.h"
@@ -568,6 +572,22 @@ void ABullyCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 	BuildInputAssets();
+
+	// exploration cheat: number row 1..0 teleports into the imported interiors (same spots as the BRGo console command)
+	{
+		const FKey SlotKeys[10] = { EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four, EKeys::Five,
+			EKeys::Six, EKeys::Seven, EKeys::Eight, EKeys::Nine, EKeys::Zero };
+		const TCHAR* SlotNames[10] = { TEXT("pool"), TEXT("audt"), TEXT("lib"), TEXT("chem"), TEXT("bio"),
+			TEXT("art"), TEXT("auto"), TEXT("boil"), TEXT("clas"), TEXT("gdrm") };
+		for (int32 i = 0; i < 10; ++i)
+		{
+			FInputKeyBinding B(FInputChord(SlotKeys[i]), IE_Pressed);
+			B.bConsumeInput = false;
+			const FString Spot = SlotNames[i];
+			B.KeyDelegate.GetDelegateForManualSet().BindLambda([this, Spot]() { BRGo(Spot); });
+			PlayerInputComponent->KeyBindings.Add(MoveTemp(B));
+		}
+	}
 	if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		EIC->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ABullyCharacter::OnMove);
@@ -716,4 +736,56 @@ void ABullyCharacter::OnLockOn(const FInputActionValue& Value)
 void ABullyCharacter::OnLockOnEnd(const FInputActionValue& Value)
 {
 	if (Combat) { Combat->SetLockOnHeld(false); }
+}
+
+// Console exploration cheat: "BRGo <name>" teleports into an imported interior pocket; "BRGo list" names them.
+// Spots come from Config/InteriorSpots.json (derived from the import manifest); the landing is floor-snapped.
+void ABullyCharacter::BRGo(const FString& Name)
+{
+	const FString Path = FPaths::ProjectConfigDir() / TEXT("InteriorSpots.json");
+	FString Raw;
+	TSharedPtr<FJsonObject> RootObj;
+	if (!FFileHelper::LoadFileToString(Raw, *Path)
+		|| !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Raw), RootObj) || !RootObj.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("BR_GO no readable %s"), *Path);
+		return;
+	}
+	const TSharedPtr<FJsonObject>* Spots;
+	if (!RootObj->TryGetObjectField(TEXT("spots"), Spots)) { return; }
+
+	FString Names;
+	for (const auto& It : (*Spots)->Values)
+	{
+		if (!Names.IsEmpty()) { Names += TEXT(", "); }
+		Names += FString(It.Key);
+	}
+	if (Name.IsEmpty() || Name.Equals(TEXT("list"), ESearchCase::IgnoreCase))
+	{
+		UE_LOG(LogTemp, Display, TEXT("BR_GO spots: %s"), *Names);
+		if (GEngine) { GEngine->AddOnScreenDebugMessage(INDEX_NONE, 8.f, FColor::Yellow, FString::Printf(TEXT("BRGo: %s"), *Names)); }
+		return;
+	}
+	const TSharedPtr<FJsonObject>* Spot;
+	if (!(*Spots)->TryGetObjectField(Name.ToLower(), Spot))
+	{
+		if (GEngine) { GEngine->AddOnScreenDebugMessage(INDEX_NONE, 6.f, FColor::Red, FString::Printf(TEXT("BRGo: unknown '%s' — try: %s"), *Name, *Names)); }
+		return;
+	}
+	const TArray<TSharedPtr<FJsonValue>>* L;
+	if (!(*Spot)->TryGetArrayField(TEXT("location_cm"), L) || L->Num() < 3) { return; }
+	FVector Dest(float((*L)[0]->AsNumber()), float((*L)[1]->AsNumber()), float((*L)[2]->AsNumber()));
+
+	// floor-snap: trace down from well above the spot; fall back to the raw point
+	FCollisionQueryParams P(SCENE_QUERY_STAT(BRGo), true, this);
+	FHitResult Hit;
+	if (GetWorld()->LineTraceSingleByChannel(Hit, Dest + FVector(0, 0, 2000.f), Dest - FVector(0, 0, 2000.f), ECC_Visibility, P))
+	{
+		Dest = Hit.Location + FVector(0, 0, 96.f);
+	}
+	SetActorLocation(Dest, false, nullptr, ETeleportType::TeleportPhysics);
+	GetCharacterMovement()->StopMovementImmediately();
+	SnapCamera();
+	UE_LOG(LogTemp, Display, TEXT("BR_GO %s -> %s"), *Name, *Dest.ToCompactString());
+	if (GEngine) { GEngine->AddOnScreenDebugMessage(INDEX_NONE, 4.f, FColor::Green, FString::Printf(TEXT("BRGo: %s"), *Name)); }
 }

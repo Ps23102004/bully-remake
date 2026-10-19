@@ -230,6 +230,9 @@ private:
 public:
 	/** Input actions (the headless combat test injects through them, exercising the real bindings). */
 	const UInputAction* GetCombatAction(FName Which) const;
+
+	/** Console: teleport into an imported interior pocket by name (Config/InteriorSpots.json); "BRGo list" lists them. */
+	UFUNCTION(Exec) void BRGo(const FString& Name);
 private:
 
 	EBullyGait Gait = EBullyGait::Run;
