@@ -191,7 +191,10 @@ void UNPCChatSubsystem::Deinitialize()
 
 void UNPCChatSubsystem::RunSmoke(float Dt)
 {
-	SmokeTime += Dt;
+	// Wall-clock, not game time: fixed-timestep nullrhi runs game seconds far faster than real ones, and the
+	// LLM/memory HTTP round-trips happen in real time (first smoke: 90 "seconds" lapsed in 2.5 real ones).
+	if (SmokeStart <= 0.0) { SmokeStart = FPlatformTime::Seconds(); }
+	SmokeTime = static_cast<float>(FPlatformTime::Seconds() - SmokeStart);
 	if (SmokeStep == 0 && SmokeTime > 8.f)
 	{
 		// walkers need a few seconds to spawn; retry the toggle until someone is in range
@@ -224,6 +227,7 @@ void UNPCChatSubsystem::RunSmoke(float Dt)
 		else if (SmokeTime > 90.f)
 		{
 			UE_LOG(LogNPCChat, Error, TEXT("BR_NPCCHAT SMOKE FAIL: no LLM reply in 90 s"));
+			CloseChat();
 			SmokeStep = 100;
 		}
 	}

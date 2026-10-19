@@ -118,6 +118,7 @@ private:
 	// "BR_NPCCHAT SMOKE OK/FAIL" for the harness to grep.
 	void RunSmoke(float Dt);
 	FTSTicker::FDelegateHandle SmokeTicker;
+	double SmokeStart = 0.0;
 	float SmokeTime = 0.f;
 	int32 SmokeStep = 0;
 	FString SmokePed;
