@@ -195,6 +195,7 @@ void UNPCChatSubsystem::RunSmoke(float Dt)
 	// LLM/memory HTTP round-trips happen in real time (first smoke: 90 "seconds" lapsed in 2.5 real ones).
 	if (SmokeStart <= 0.0) { SmokeStart = FPlatformTime::Seconds(); }
 	SmokeTime = static_cast<float>(FPlatformTime::Seconds() - SmokeStart);
+	const int32 StepBefore = SmokeStep;
 	if (SmokeStep == 0 && SmokeTime > 8.f)
 	{
 		// walkers need a few seconds to spawn; retry the toggle until someone is in range
@@ -243,6 +244,12 @@ void UNPCChatSubsystem::RunSmoke(float Dt)
 			UE_LOG(LogNPCChat, Error, TEXT("BR_NPCCHAT SMOKE FAIL: memory summary never landed"));
 			SmokeStep = 100;
 		}
+	}
+	// the smoke owns the run's length: the walk script just idles, so quit as soon as there is a verdict
+	if (SmokeStep == 100 && StepBefore != 100 && GEngine)
+	{
+		UE_LOG(LogNPCChat, Display, TEXT("BR_NPCCHAT smoke done, quitting"));
+		GEngine->Exec(GetWorld(), TEXT("QUIT"));
 	}
 }
 
