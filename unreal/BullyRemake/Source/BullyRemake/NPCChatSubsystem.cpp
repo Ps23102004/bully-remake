@@ -699,7 +699,8 @@ void UNPCChatSubsystem::RequestMemorySummary(const FString& PedKey, TArray<FNPCC
 
 	TArray<TSharedPtr<FJsonValue>> Messages;
 	Messages.Add(ChatMsg(TEXT("user"), Prompt));
-	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Req = MakeLlmRequest(Messages, 0.2f, 500);
+	// reasoning models think before the JSON array; a tight budget truncates mid-<think> and loses everything
+	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Req = MakeLlmRequest(Messages, 0.2f, 3000);
 
 	// Self-contained completion (no `this`): the summary must land even if the world/subsystem is gone by then.
 	const FString SavePath = MemoryPath(PedKey);
@@ -727,7 +728,8 @@ void UNPCChatSubsystem::RequestMemorySummary(const FString& PedKey, TArray<FNPCC
 		}
 		if (NewFacts.Num() == 0)
 		{
-			UE_LOG(LogNPCChat, Warning, TEXT("BR_NPCCHAT memory summary failed; keeping old facts (%s)"), *SavePath);
+			UE_LOG(LogNPCChat, Warning, TEXT("BR_NPCCHAT memory summary failed (http %d, %d chars); keeping old facts (%s)"),
+				R.IsValid() ? R->GetResponseCode() : -1, Content.Len(), *SavePath);
 			NewFacts = OldFacts;
 			if (NewFacts.Num() == 0) { return; }
 		}
