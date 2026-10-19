@@ -28,6 +28,8 @@ public:
 
 	/** Console: `BullyMenu`. Esc is bound in SetupInputComponent. */
 	UFUNCTION(Exec, BlueprintCallable, Category = "Bully|Menu") void ToggleSettingsMenu();
+	/** ai-npc: talk to the nearest NPC (UNPCChatSubsystem). Console: `NPCChat`; T is bound in SetupInputComponent. */
+	UFUNCTION(Exec, BlueprintCallable, Category = "Bully|Chat") void NPCChat();
 	UFUNCTION(BlueprintCallable, Category = "Bully|Menu") void OpenSettingsMenu();
 	UFUNCTION(BlueprintCallable, Category = "Bully|Menu") void CloseSettingsMenu();
 	UFUNCTION(BlueprintCallable, Category = "Bully|Menu") bool IsSettingsMenuOpen() const { return SettingsWidget.IsValid(); }

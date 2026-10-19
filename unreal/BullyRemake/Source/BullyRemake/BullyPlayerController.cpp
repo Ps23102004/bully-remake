@@ -3,6 +3,7 @@
 
 #include "BullyCharacter.h"
 #include "Containers/Ticker.h"
+#include "NPCChatSubsystem.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Framework/Application/SlateApplication.h"
@@ -172,6 +173,20 @@ void ABullyPlayerController::SetupInputComponent()
 		FInputKeyBinding& B = InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &ABullyPlayerController::ToggleSettingsMenu);
 		B.bExecuteWhenPaused = true;
 		B.bConsumeInput = true;
+		// ai-npc: T opens/closes the NPC chat. While the chat panel has keyboard focus Slate eats the key,
+		// so typing a "t" into the input box does not re-trigger this.
+		InputComponent->BindKey(EKeys::T, IE_Pressed, this, &ABullyPlayerController::NPCChat);
+	}
+}
+
+void ABullyPlayerController::NPCChat()
+{
+	if (UWorld* W = GetWorld())
+	{
+		if (UNPCChatSubsystem* Chat = W->GetSubsystem<UNPCChatSubsystem>())
+		{
+			Chat->Toggle(this);
+		}
 	}
 }
 

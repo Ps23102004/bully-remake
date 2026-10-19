@@ -157,6 +157,26 @@ void AAmbientWalker::Tick(float DeltaSeconds)
 	PathWalked += FVector::Dist2D(Pos, LastPos);
 	LastPos = Pos;
 
+	if (bChatHold)
+	{
+		// ai-npc conversation: stand still, turn to the player; held time is not a stuck candidate
+		if (const APlayerController* PC = W->GetFirstPlayerController())
+		{
+			if (const APawn* P = PC->GetPawn())
+			{
+				const FVector To = P->GetActorLocation() - Pos;
+				if (To.SizeSquared2D() > 1.f)
+				{
+					const FRotator Want(0.f, To.Rotation().Yaw, 0.f);
+					SetActorRotation(FMath::RInterpTo(GetActorRotation(), Want, DeltaSeconds, 6.f));
+				}
+			}
+		}
+		ProgressRefPos = Pos;
+		ProgressRefTime = Now;
+		return;
+	}
+
 	if (TickYield(Now, Pos))
 	{
 		// yielding: not a stuck candidate, idle timers keep running

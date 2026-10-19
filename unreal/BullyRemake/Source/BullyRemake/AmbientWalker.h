@@ -56,6 +56,9 @@ public:
 	/** Scripted-NPC hand-back (UScriptedNPCSubsystem "make ambient"): replaces the loop and starts walking it from `Start`. */
 	void ResumeLoop(const TArray<FVector>& Loop, int32 Start = 0);
 
+	/** ai-npc (UNPCChatSubsystem): mid-conversation hold — stop walking and face the player until released. */
+	bool bChatHold = false;
+
 	virtual void Tick(float DeltaSeconds) override;
 
 protected:
