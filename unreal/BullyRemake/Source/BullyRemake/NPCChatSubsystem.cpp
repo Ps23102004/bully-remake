@@ -167,15 +167,78 @@ void UNPCChatSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 	bConfigLoaded = LoadConfig();
+	if (FParse::Param(FCommandLine::Get(), TEXT("BRNPCChatSmoke")))
+	{
+		UE_LOG(LogNPCChat, Display, TEXT("BR_NPCCHAT smoke armed"));
+		SmokeTicker = FTSTicker::GetCoreTicker().AddTicker(TEXT("NPCChatSmoke"), 0.f, [this](float Dt)
+		{
+			RunSmoke(Dt);
+			return SmokeStep < 100;
+		});
+	}
 }
 
 void UNPCChatSubsystem::Deinitialize()
 {
+	FTSTicker::GetCoreTicker().RemoveTicker(SmokeTicker);
 	if (IsChatOpen())
 	{
 		CloseChat();
 	}
 	Super::Deinitialize();
+}
+
+void UNPCChatSubsystem::RunSmoke(float Dt)
+{
+	SmokeTime += Dt;
+	if (SmokeStep == 0 && SmokeTime > 8.f)
+	{
+		// walkers need a few seconds to spawn; retry the toggle until someone is in range
+		ABullyPlayerController* PC = Cast<ABullyPlayerController>(GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr);
+		if (PC)
+		{
+			Toggle(PC);
+			if (IsChatOpen())
+			{
+				SmokePed = NpcPedKey;
+				UE_LOG(LogNPCChat, Display, TEXT("BR_NPCCHAT SMOKE open: ped=%s name=%s"), *NpcPedKey, *Persona.Name);
+				SendPlayerLine(TEXT("Hey, I'm Jimmy, the new kid. What's your deal?"));
+				SmokeStep = 1;
+			}
+		}
+		if (SmokeStep == 0 && SmokeTime > 40.f)
+		{
+			UE_LOG(LogNPCChat, Error, TEXT("BR_NPCCHAT SMOKE FAIL: no NPC in range / no controller"));
+			SmokeStep = 100;
+		}
+	}
+	else if (SmokeStep == 1)
+	{
+		if (Transcript.Num() >= 2 && !Transcript.Last().bPlayer)
+		{
+			UE_LOG(LogNPCChat, Display, TEXT("BR_NPCCHAT SMOKE reply: %s"), *Transcript.Last().Text);
+			CloseChat();
+			SmokeStep = 2;
+		}
+		else if (SmokeTime > 90.f)
+		{
+			UE_LOG(LogNPCChat, Error, TEXT("BR_NPCCHAT SMOKE FAIL: no LLM reply in 90 s"));
+			SmokeStep = 100;
+		}
+	}
+	else if (SmokeStep == 2)
+	{
+		if (FPaths::FileExists(MemoryPath(SmokePed)))
+		{
+			UE_LOG(LogNPCChat, Display, TEXT("BR_NPCCHAT SMOKE OK: memory written to %s"), *MemoryPath(SmokePed));
+			SmokeStep = 100;
+		}
+		else if (SmokeTime > 150.f)
+		{
+			UE_LOG(LogNPCChat, Error, TEXT("BR_NPCCHAT SMOKE FAIL: memory summary never landed"));
+			SmokeStep = 100;
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------------------------------------------

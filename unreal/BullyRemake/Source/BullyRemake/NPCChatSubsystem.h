@@ -112,4 +112,13 @@ private:
 
 	UPROPERTY(Transient) TObjectPtr<USoundWaveProcedural> SpeechWave;
 	UPROPERTY(Transient) TObjectPtr<UAudioComponent> SpeechAudio;
+
+	// headless smoke (-BRNPCChatSmoke, nullrhi): open a chat with the nearest NPC, send one line, wait for the
+	// LLM reply, close (fires the memory summary), then verify Saved/NPCChat/<ped>.json appears. Logs
+	// "BR_NPCCHAT SMOKE OK/FAIL" for the harness to grep.
+	void RunSmoke(float Dt);
+	FTSTicker::FDelegateHandle SmokeTicker;
+	float SmokeTime = 0.f;
+	int32 SmokeStep = 0;
+	FString SmokePed;
 };
