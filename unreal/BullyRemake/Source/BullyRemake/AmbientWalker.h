@@ -59,6 +59,20 @@ public:
 	/** ai-npc (UNPCChatSubsystem): mid-conversation hold — stop walking and face the player until released. */
 	bool bChatHold = false;
 
+protected:
+	/**
+	 * ai-npc "fight anybody": every walker's combat component joins the Enemy team (BeginPlay), so the player's
+	 * swings, grapples and lock-on connect with ordinary students. The first health loss converts the walker into
+	 * a brawler: the loop is abandoned and an ABullyCombatAIController possesses it (same AI as the sparring
+	 * partner, no tutorial gates/tether). A KO'd walker stays down. Scripted NPCs inherit this: hitting a
+	 * mission bully drops its script and starts the fight.
+	 */
+	void StartBrawl();
+	bool bBrawling = false;
+	float BrawlRefHealth = -1.f;
+
+public:
+
 	virtual void Tick(float DeltaSeconds) override;
 
 protected:

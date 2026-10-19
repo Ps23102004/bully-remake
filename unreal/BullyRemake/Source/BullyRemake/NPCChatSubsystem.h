@@ -106,6 +106,7 @@ private:
 	int32 LlmMaxTokens = 180;
 	FString TtsBaseUrl, TtsModel, TtsKey;
 	bool bTtsEnabled = true;
+	float TtsVolume = 2.5f;
 	float InteractRadius = 350.f;
 	TArray<FString> WorldFacts;
 	TMap<FString, FNPCPersona> Personas;

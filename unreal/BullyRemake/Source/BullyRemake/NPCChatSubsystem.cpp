@@ -334,6 +334,7 @@ bool UNPCChatSubsystem::LoadConfig()
 		(*Tts)->TryGetStringField(TEXT("api_key_file"), KeyFile);
 		TtsKey = ReadKeyFile(KeyFile);
 		(*Tts)->TryGetBoolField(TEXT("enabled"), bTtsEnabled);
+		(*Tts)->TryGetNumberField(TEXT("volume"), TtsVolume);
 	}
 	if (const TSharedPtr<FJsonObject>* Stt; Root->TryGetObjectField(TEXT("stt"), Stt))
 	{
@@ -1018,6 +1019,6 @@ void UNPCChatSubsystem::OnSpeech(FHttpRequestPtr Req, FHttpResponsePtr Resp, boo
 	SpeechWave = Wave;
 
 	SpeechAudio = UGameplayStatics::SpawnSoundAttached(Wave, Npc->GetMesh(), NAME_None, FVector(0, 0, 60.f),
-		EAttachLocation::KeepRelativeOffset, true);
+		EAttachLocation::KeepRelativeOffset, true, TtsVolume);
 	UE_LOG(LogNPCChat, Display, TEXT("BR_NPCCHAT speaking %.1f s @ %d Hz x%d"), Wave->Duration, Rate, Channels);
 }

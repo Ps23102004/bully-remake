@@ -12,7 +12,8 @@
     "enabled": true,
     "base_url": "https://api.fish.audio",
     "model": "s1",
-    "api_key_file": "~/.claude/secrets/fish-audio.key"
+    "api_key_file": "~/.claude/secrets/fish-audio.key",
+    "volume": 3.0
   },
   "stt": {
     "enabled": true,
