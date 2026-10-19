@@ -2,7 +2,7 @@
 
 **Updated:** 2026-10-19 · **Branch:** `phase0` (= `origin/main`; checkout `~/bully-remake`) · **Machine:** midirstudio (M3 Ultra Mac Studio)
 
-## ai-npc (branch `ai-npc`, worktree `~/bully-remake-wt/ai-npc` on the Studio; pushed, NOT merged)
+## ai-npc (MERGED to `main` 2026-10-19 with owner approval, plus fight-anybody + voice input; worktree `~/bully-remake-wt/ai-npc` on the Studio)
 
 Talk to any NPC, LLM-driven, with per-NPC long-term memory and (pending credit) Fish Audio voices. Design header: `Source/BullyRemake/NPCChatSubsystem.h`; config `Config/NPCChat.json` (12 personas: GN_Bully01–05 Davis/Wade/Tom/Troy/Trent + ambient boy01/boy02/asiangirl/greekboy/nerd_bucky/prefect_seth + `*`).
 
