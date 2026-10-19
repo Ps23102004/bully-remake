@@ -12,6 +12,24 @@ Talk to any NPC, LLM-driven, with per-NPC long-term memory and (pending credit) 
 - Not yet done: owner playtest with the interactive panel (type to NPCs in a real -game run), voice ids per ped, gestures on reply, mic input (whisper) later.
 - Worktree Content/ is an APFS clone of the main checkout's imported content (regenerable, disposable).
 
+## Map unlock + teleport (2026-10-19, Phase 1 of owner's "all map playable" ask)
+
+Owner wants the whole world playable + unlocked, teleportable by a button, plus weapons & vehicles (real game rips kept
+git-ignored; original code in-repo). Sequencing: town -> other areas -> teleport -> weapons -> vehicles.
+
+- **Town imported & verified.** Importer gained `town`/`all` presets (`tools/importers/world.py`): `town` = academy +
+  8 outdoor districts (business strip, Old Bullworth Vale, New Coventry, carnival, junkyard, BMX park, go-kart track,
+  tGlobal); `all` adds ~27 interiors. `world --preset town` -> 30 scenes / 3,734 placements, 0 failures; `run_import.sh
+  --scenes all` -> 1,694 meshes (0 failed, 7,835 collision slots bound), 3,604 placements placed, 0 errors. Geometry +
+  collision + Lumen all came through (evidence: `~/bully-remake-evidence/town/` district + aerial shots).
+- **Teleport menu.** Press **G** in-game -> Slate list of every area (all unlocked), click to warp, floor-snapped on
+  arrival (`SBullyTeleportMenu` in `BullyPlayerController.cpp`, bound in `SetupInputComponent`; shares the settings-menu
+  input envelope). Spots auto-generated for every imported scene by `tools/ue/gen_teleport_spots.py` (median XY, min z)
+  into `Config/InteriorSpots.json` -> re-run after any world re-import. The old number-row 1..0 quick-teleport still works.
+- **Next:** Phase 2 = the ~27 interiors (`world --preset all` + `run_import.sh`); then weapons (full arsenal) and
+  vehicles (bike/skateboard/go-kart, fully driveable). **Owner playtest asks** (feel, not correctness): drive feel of each
+  vehicle, weapon punch, and a roam through the streamed town for perf once it's all in.
+
 ## Verified state
 
 - Repo `oh-ashen-one/bully-remake` created public 2026-10-15, seeded on `phase0` (README, CREDITS, settings, CI blocklist, LICENSE).

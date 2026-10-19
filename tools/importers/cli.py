@@ -391,7 +391,7 @@ def main(argv=None) -> int:
     p.set_defaults(fn=cmd_ipb)
 
     p = sub.add_parser("world", help="convert the academy: placements, models, textures, scene manifest")
-    p.add_argument("--preset", default="academy", choices=["academy", "core"])
+    p.add_argument("--preset", default="academy", choices=["academy", "core", "town", "all"])
     p.add_argument("--ipb", nargs="*", help="explicit IPB stems (overrides --preset)")
     p.add_argument("--file-space", action="store_true", help="keep root/model node transforms in models")
     p.add_argument("--convert-invisible", action="store_true", help="also convert nogo/walkable/_nd markers")

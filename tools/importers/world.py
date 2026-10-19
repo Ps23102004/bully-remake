@@ -29,9 +29,21 @@ from .nft import safe_name
 ACADEMY = ["tschool", "ischool", "isc_art", "isc_audt", "isc_auto", "isc_bio", "isc_boil", "isc_chem",
            "isc_clas", "isc_dorm", "isc_Gdrm", "isc_lib", "isc_offi", "isc_pool", "isc_prep", "isc_staf",
            "zone_school1", "zone_school2", "zone_school3", "zone_school4", "zone_school5", "zone_school6"]
+# Outdoor town districts (Config/world.dat IPL roster): business strip, rich area, industrial, carnival,
+# junkyard, BMX park, go-kart track. tGlobal is the always-loaded relief/water, needed by every outdoor area.
+TOWN_OUTDOOR = ["tGlobal", "tbusines", "trich", "tindust", "tcarni", "tjyard", "tBMX", "tgokart"]
+
+# Standalone interiors outside the academy: shops, gym, asylum, observatory, carnival stalls, clique stores, races.
+INTERIORS = ["igrocery", "iboxing", "ibkshop", "icomshp", "icloth_p", "icloth_r", "itenn", "ifunhous",
+             "iasylum", "ibarber", "ichem", "iobserv", "iballtos", "isouvnir", "ishoot", "itrailer",
+             "isalon", "iMGRaceA", "iMGRaceB", "iMGRaceC", "iware", "ipbarb", "ifreaks",
+             "iDropS", "iPrepS", "iJockS", "iGrsrS"]
+
 PRESETS = {
     "academy": ACADEMY,
     "core": ["tschool", "ischool"],
+    "town": ACADEMY + TOWN_OUTDOOR,          # academy + open-world town (keeps the academy in the manifest)
+    "all": ACADEMY + TOWN_OUTDOOR + INTERIORS,  # the whole world
 }
 
 MANIFEST_FORMAT = "bully-remake.scene-manifest/1"

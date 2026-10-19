@@ -34,6 +34,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Bully|Menu") void CloseSettingsMenu();
 	UFUNCTION(BlueprintCallable, Category = "Bully|Menu") bool IsSettingsMenuOpen() const { return SettingsWidget.IsValid(); }
 
+	/** Teleport menu: pick any imported area and warp there (all unlocked). Console: `TeleportMenu`; G is bound in SetupInputComponent. */
+	UFUNCTION(Exec, BlueprintCallable, Category = "Bully|Menu") void ToggleTeleportMenu();
+	UFUNCTION(BlueprintCallable, Category = "Bully|Menu") void OpenTeleportMenu();
+	UFUNCTION(BlueprintCallable, Category = "Bully|Menu") void CloseTeleportMenu();
+	UFUNCTION(BlueprintCallable, Category = "Bully|Menu") bool IsTeleportMenuOpen() const { return TeleportWidget.IsValid(); }
+
 	/** Look settings, as sensitivity multipliers (ABullyCharacter::MinLookSens..MaxLookSens). Applied live; Save persists. */
 	float GetLookX() const;
 	float GetLookY() const;
@@ -50,6 +56,7 @@ private:
 	void RunSettingsSmoke();
 
 	TSharedPtr<SWidget> SettingsWidget;
+	TSharedPtr<SWidget> TeleportWidget;
 	double LastToggleRealTime = 0.0;
 	FTSTicker::FDelegateHandle SmokeTicker;
 	float SmokeTime = 0.f;
