@@ -163,8 +163,18 @@ owner screenshot.
 
 ## Backlog (owner-reviewed 2026-10-19, in priority order)
 
-1. **Crowd gesture arm corruption** (above) - diagnose via rendered crowd capture; suspect `BullyScriptedNPC` gesture
-   blend, not the data.
+1. **Crowd gesture arm corruption** - **DIAGNOSED 2026-10-19 (Studio), fix pending.** Reproduced with a new rendered
+   crowd-capture harness (`run_npc_smoke.sh --render <dir>` → `-BRNPCShotDir`; frames GN_Asiangirl close-up during the
+   `crowd_1_02` cheer beat). Evidence: `~/bully-remake-evidence/crowd-repro/crowd_01_cheer.png` — body/dress/head fine,
+   **forearms grossly stretched + detached** while she plays `VICTORY02`. **Root cause: bone translation retargeting,
+   NOT the gesture code and NOT the clip data.** The crowd's gestures are shared C_Player (male-proportioned) clips; their
+   absolute arm-bone *translations* are applied to her female skeleton (different arm lengths) → forearms stretch. Only
+   GN_Asiangirl mangles because she's the only non-male-proportioned ped; male peds match the clip so look fine. **Fix
+   belongs in the import pipeline** (`tools/ue/import_character.py`): set non-root bone **Translation Retargeting = Skeleton**
+   (rotation-only; lengths from the target skeleton), root/pelvis = Animation/AnimationScaled — or strip non-root translation
+   tracks from gesture AnimSequences. Then re-import (`run_import_npc.sh`) and re-capture. NB: the fix travels via git but the
+   re-imported clips do not, so the owner re-imports on the laptop. (On the Studio the crowd bully meshes GN_Bully01-04 are
+   also placeholders — not imported here; `run_import_npc.sh --peds GN_Bully01,...` to populate.)
 2. **Mission robustness pass**: audit every `trigger_enter` / `reach_location` completion in all missions for the
    thin-trigger/teleport race; add `any` fallbacks like `leave_office`; add a headless smoke variant that drives stages
    the "wrong" way (skip triggers, overshoot points).

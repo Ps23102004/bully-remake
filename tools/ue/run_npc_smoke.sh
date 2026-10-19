@@ -17,15 +17,27 @@ MAP=/Game/Imported/Maps/Bullworth
 LABEL=bully-npc
 LIMIT=900
 SCRIPT=""
+RENDER=""          # when set (a dir), run rendered (-RenderOffScreen) and capture the crowd beat there
+SHOTRES=1600x900
 while [ $# -gt 0 ]; do
   case "$1" in
     --phases) PHASES="$2"; shift 2 ;;
     --out) OUT="$2"; shift 2 ;;
     --script) SCRIPT="$2"; shift 2 ;;
+    --render) RENDER="$2"; shift 2 ;;
+    --res) SHOTRES="$2"; shift 2 ;;
     --seconds-limit) LIMIT="$2"; shift 2 ;;
     *) br_die "unknown argument $1" ;;
   esac
 done
+# rendered crowd repro vs the default headless nullrhi smoke
+if [ -n "$RENDER" ]; then
+  RENDER="$(mkdir -p "$RENDER" && cd "$RENDER" && pwd)"
+  RHI="-RenderOffScreen"; RX=${SHOTRES%x*}; RY=${SHOTRES#*x}
+  SHOTARGS="-BRNPCShotDir=$RENDER -BRShotResX=$RX -BRShotResY=$RY"
+else
+  RHI="-nullrhi"; RX=640; RY=360; SHOTARGS=""
+fi
 [ -f "$BR_REPO/unreal/BullyRemake/Content/Imported/Maps/Bullworth.umap" ] || br_die "level missing: run tools/ue/run_import.sh first"
 [ -f "$BR_REPO/imported/triggers/day_one.json" ] || br_die "imported/triggers/day_one.json missing: python3 -m tools.importers trigger (BULLY_INSTALL set)"
 
@@ -37,9 +49,9 @@ START=$(date +%s)
 EXTRA=""
 [ -n "$SCRIPT" ] && EXTRA="-BRNPCScript=$SCRIPT"
 "$GPU_SLOT" capture --label "$LABEL" -- \
-  "$UE_CMD" "$BR_UPROJECT" "$MAP" -game -nullrhi -unattended -nosplash -nocrashreports -NoSound -notraceserver -NoVSync \
-  -stdout -FullStdOutLogOutput -ResX=640 -ResY=360 -windowed -UseFixedTimeStep -FPS=60 \
-  -BRNPCSmoke="$PHASES" $EXTRA ${BR_EXTRA_ARGS:-} \
+  "$UE_CMD" "$BR_UPROJECT" "$MAP" -game $RHI -unattended -nosplash -nocrashreports -NoSound -notraceserver -NoVSync \
+  -stdout -FullStdOutLogOutput -ResX=$RX -ResY=$RY -windowed -UseFixedTimeStep -FPS=60 \
+  -BRNPCSmoke="$PHASES" $SHOTARGS $EXTRA ${BR_EXTRA_ARGS:-} \
   > "$LOG" 2>&1 &
 WRAP=$!
 br_window_watch "$WRAP" "$OUT/window_watch.txt" &

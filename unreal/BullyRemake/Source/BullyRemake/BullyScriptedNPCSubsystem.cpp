@@ -137,6 +137,14 @@ void UScriptedNPCSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 		Smoke.Phases = SmokeList.IsEmpty() ? TEXT("stage,gauntlet,crowd") : SmokeList;
 		Smoke.bEnabled = Smoke.Phases != TEXT("none");   // "none": load only (console-driven runs: -ExecCmds="SNPC.Cue ...")
 		Smoke.StepStart = InWorld.GetTimeSeconds();
+		if (FParse::Value(FCommandLine::Get(), TEXT("-BRNPCShotDir="), Smoke.ShotDir) && !Smoke.ShotDir.IsEmpty())
+		{
+			int32 V = 0;
+			if (FParse::Value(FCommandLine::Get(), TEXT("-BRShotResX="), V) && V > 0) { Smoke.ShotResX = V; }
+			if (FParse::Value(FCommandLine::Get(), TEXT("-BRShotResY="), V) && V > 0) { Smoke.ShotResY = V; }
+			IFileManager::Get().MakeDirectory(*Smoke.ShotDir, true);
+			UE_LOG(LogSNPCSys, Display, TEXT("BR_SNPC_SMOKE crowd capture armed -> %s at %dx%d"), *Smoke.ShotDir, Smoke.ShotResX, Smoke.ShotResY);
+		}
 		UE_LOG(LogSNPCSys, Display, TEXT("BR_SNPC_SMOKE harness armed: phases %s"), *Smoke.Phases);
 	}
 }

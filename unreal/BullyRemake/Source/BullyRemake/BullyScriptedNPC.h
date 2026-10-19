@@ -15,6 +15,7 @@
 
 class UAnimSequence;
 class ABullyScriptedNPC;
+class ACameraActor;
 
 enum class ESNPCCmd : uint8 { GoTo, FollowPath, Face, Gesture, Wait, Block, Disperse, Despawn, MakeAmbient };
 
@@ -362,5 +363,12 @@ private:
 		FVector Target = FVector::ZeroVector;
 		bool bWalking = false;
 		TArray<FString> Report;
+		// rendered crowd repro (-BRNPCShotDir=<dir> in a -game -RenderOffScreen run): during the crowd-cheering beat,
+		// frame the crowd and grab HighResShots so the gesture rendering (e.g. mangled arms) can be seen, not just logged.
+		FString ShotDir;
+		int32 ShotsTaken = 0;
+		double NextShotAt = -1.0;
+		int32 ShotResX = 1600, ShotResY = 900;
+		TWeakObjectPtr<ACameraActor> ShotCam;
 	} Smoke;
 };

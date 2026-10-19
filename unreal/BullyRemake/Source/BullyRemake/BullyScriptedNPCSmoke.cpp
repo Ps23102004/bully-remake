@@ -6,11 +6,19 @@
 #include "BullyScriptedNPC.h"
 
 #include "BullyCharacter.h"
+#include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
+#include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
+#include "GameFramework/PlayerController.h"
+#include "HAL/FileManager.h"
+#include "HighResScreenshot.h"
 #include "Kismet/GameplayStatics.h"
 #include "MissionSubsystem.h"
+#include "UnrealClient.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSNPCSmoke, Log, All);
 
@@ -46,6 +54,62 @@ void UScriptedNPCSubsystem::TickSmoke(float Dt)
 		OutNpcs = 0;
 		if (G) { for (const auto& N : G->Spawned) { if (N.IsValid()) { ++OutNpcs; } } }
 		return G && G->bActive;
+	};
+	// Rendered crowd repro: frame the live crowd from the fight side (they face the player, so arms show) and shoot.
+	auto CaptureCrowd = [&](const TCHAR* Tag)
+	{
+		if (Smoke.ShotDir.IsEmpty()) { return; }
+		const FSNPCGroup* G = FindGroup(TEXT("crowd_1_02"));
+		if (!G) { return; }
+		// Prefer the subject ped (GN_Asiangirl -- the one with the reported arm corruption): frame her close from the
+		// front (the direction she faces) so her arms fill the shot. Fall back to the whole-crowd centroid.
+		ABullyScriptedNPC* Subject = nullptr;
+		FVector Sum = FVector::ZeroVector; int32 N = 0;
+		for (const auto& Ptr : G->Spawned)
+		{
+			ABullyScriptedNPC* A = Ptr.Get();
+			if (!A) { continue; }
+			Sum += A->GetActorLocation(); ++N;
+			if (!Subject && A->GetMesh() && A->GetMesh()->GetSkeletalMeshAsset()
+				&& A->GetMesh()->GetSkeletalMeshAsset()->GetName().Contains(TEXT("Asiangirl"))) { Subject = A; }
+		}
+		if (N == 0) { return; }
+		FVector CamLoc, LookAt;
+		if (Subject)
+		{
+			const FVector S = Subject->GetActorLocation();
+			FVector Fwd = Subject->GetActorForwardVector(); Fwd.Z = 0.f; Fwd = Fwd.GetSafeNormal();
+			if (Fwd.IsNearlyZero()) { Fwd = (P->GetActorLocation() - S).GetSafeNormal2D(); }
+			CamLoc = S + Fwd * 300.f + FVector(0.f, 0.f, 120.f);   // in front of her, chest height
+			LookAt = S + FVector(0.f, 0.f, 95.f);
+		}
+		else
+		{
+			const FVector C = Sum / N;
+			FVector Dir = P->GetActorLocation() - C; Dir.Z = 0.f; Dir = Dir.GetSafeNormal();
+			if (Dir.IsNearlyZero()) { Dir = FVector(1.f, 0.f, 0.f); }
+			CamLoc = C + Dir * 520.f + FVector(0.f, 0.f, 185.f);
+			LookAt = C + FVector(0.f, 0.f, 100.f);
+		}
+		const FVector C = LookAt;   // for the log
+		ACameraActor* Cam = Smoke.ShotCam.Get();
+		if (!Cam)
+		{
+			FActorSpawnParameters SP; SP.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			Cam = W->SpawnActor<ACameraActor>(CamLoc, FRotator::ZeroRotator, SP);
+			Smoke.ShotCam = Cam;
+		}
+		if (!Cam) { return; }
+		Cam->SetActorLocationAndRotation(CamLoc, FRotationMatrix::MakeFromX((LookAt - CamLoc).GetSafeNormal()).Rotator());
+		Cam->GetCameraComponent()->SetFieldOfView(62.f);
+		if (APlayerController* PC = W->GetFirstPlayerController()) { PC->SetViewTarget(Cam); }
+		const FString File = Smoke.ShotDir / FString::Printf(TEXT("crowd_%02d_%s.png"), Smoke.ShotsTaken, Tag);
+		FHighResScreenshotConfig& HR = GetHighResScreenshotConfig();
+		HR.SetResolution(uint32(Smoke.ShotResX), uint32(Smoke.ShotResY), 1.0f);
+		HR.SetFilename(File); HR.bMaskEnabled = false; HR.bDumpBufferVisualizationTargets = false;
+		const bool bOk = GEngine->GameViewport && GEngine->GameViewport->Viewport && GEngine->GameViewport->Viewport->TakeHighResScreenShot();
+		UE_LOG(LogSNPCSmoke, Display, TEXT("BR_SNPC_SMOKE crowd shot %s '%s' (%d npcs, centroid %s) -> %s"), bOk ? TEXT("ok") : TEXT("REFUSED"), Tag, N, *C.ToCompactString(), *File);
+		++Smoke.ShotsTaken;
 	};
 
 	if (Now >= Smoke.NextLog && Smoke.Step >= 10)
@@ -178,6 +242,12 @@ void UScriptedNPCSubsystem::TickSmoke(float Dt)
 		else if (T > 90.0) { LogStatus(); Fail(TEXT("crowd did not gather in 90 s")); Next(); }
 		break;
 	case 33:
+		// capture the crowd across the ~6 s cheer window (4 frames) so the gesture rendering can be eyeballed
+		if (!Smoke.ShotDir.IsEmpty() && Smoke.ShotsTaken < 4 && (Smoke.NextShotAt < 0.0 || Now >= Smoke.NextShotAt))
+		{
+			CaptureCrowd(TEXT("cheer"));
+			Smoke.NextShotAt = Now + 1.3;
+		}
 		if (T < 6.0) { break; }
 		if (Saw(TEXT("crowd_cheering"))) { Pass(TEXT("crowd_cheering emitted; crowd cheered for 6 s")); } else { Fail(TEXT("no crowd_cheering")); }
 		LogStatus();
