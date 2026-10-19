@@ -2,9 +2,11 @@
 #include "BullyScriptedNPC.h"
 
 #include "Animation/AnimSequence.h"
+#include "Animation/Skeleton.h"
 #include "BullyAnimInstance.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -569,6 +571,29 @@ UAnimSequence* ABullyScriptedNPC::FindClip(const FString& Name)
 	return S;
 }
 
+namespace
+{
+	// Shared ped gesture clips are authored for the male C_Player proportions; played on a differently-proportioned
+	// skeleton (e.g. GN_Asiangirl, the only female crowd ped) their absolute bone translations stretch/detach the
+	// forearms. Take bone *lengths* from the target skeleton (Skeleton mode, rotation-only) and keep the root on
+	// Animation for placement/root motion. One-time, idempotent per unique skeleton; runtime-only (never saved).
+	void EnsureGestureRetargeting(USkeletalMeshComponent* M)
+	{
+		USkeletalMesh* Mesh = M ? M->GetSkeletalMeshAsset() : nullptr;
+		USkeleton* Sk = Mesh ? Mesh->GetSkeleton() : nullptr;
+		if (!Sk) { return; }
+		static TSet<TWeakObjectPtr<USkeleton>> Configured;
+		if (Configured.Contains(Sk)) { return; }
+		Configured.Add(Sk);
+		const int32 NumBones = Sk->GetReferenceSkeleton().GetNum();
+		for (int32 i = 0; i < NumBones; ++i)
+		{
+			Sk->SetBoneTranslationRetargetingMode(i, i == 0 ? EBoneTranslationRetargetingMode::Animation : EBoneTranslationRetargetingMode::Skeleton);
+		}
+		UE_LOG(LogSNPC, Display, TEXT("BR_SNPC retargeting set on skeleton %s (%d bones: root=Animation, rest=Skeleton) so shared clips stop stretching limbs"), *Sk->GetName(), NumBones);
+	}
+}
+
 float ABullyScriptedNPC::StartClip(const TArray<FString>& Candidates, bool bLoopClip, float Rate, bool& bFound)
 {
 	UWorld* W = GetWorld();
@@ -583,6 +608,7 @@ float ABullyScriptedNPC::StartClip(const TArray<FString>& Candidates, bool bLoop
 	bGestureFallback = true;
 	USkeletalMeshComponent* M = GetMesh();
 	if (!M || !M->GetSkeletalMeshAsset()) { return GestureLength; }
+	EnsureGestureRetargeting(M);   // fix shared-clip limb stretch once per skeleton before the first gesture plays
 	for (const FString& C : Candidates)
 	{
 		if (UAnimSequence* S = FindClip(C))
