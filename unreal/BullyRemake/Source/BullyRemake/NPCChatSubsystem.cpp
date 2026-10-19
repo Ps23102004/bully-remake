@@ -169,6 +169,7 @@ void UNPCChatSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	bConfigLoaded = LoadConfig();
 	if (FParse::Param(FCommandLine::Get(), TEXT("BRNPCChatSmoke")))
 	{
+		InteractRadius = FMath::Max(InteractRadius, 20000.f); // smoke player spawns at the gates, walkers are in the courtyard
 		UE_LOG(LogNPCChat, Display, TEXT("BR_NPCCHAT smoke armed"));
 		SmokeTicker = FTSTicker::GetCoreTicker().AddTicker(TEXT("NPCChatSmoke"), 0.f, [this](float Dt)
 		{

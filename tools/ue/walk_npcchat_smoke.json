@@ -1,0 +1,11 @@
+{
+ "_owner": "ai-npc",
+ "_note": "Headless NPC-chat smoke (run with tools/ue/run_walk_nullrhi.sh + BR_EXTRA_ARGS=-BRNPCChatSmoke). The walk runner only idles in the courtyard long enough for UNPCChatSubsystem's smoke ticker to open a chat with the nearest walker, get a real LLM reply, close, and verify the memory summary lands in Saved/NPCChat/. Grep the log for 'BR_NPCCHAT SMOKE OK'.",
+ "warmup_seconds": 10,
+ "settle_seconds": 2,
+ "steps": [
+  { "do": "log", "name": "npcchat-smoke-idle" },
+  { "do": "wait", "seconds": 150 },
+  { "do": "log", "name": "npcchat-smoke-done" }
+ ]
+}
