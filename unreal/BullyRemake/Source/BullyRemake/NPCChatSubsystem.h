@@ -15,6 +15,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AudioCaptureCore.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "Interfaces/IHttpRequest.h"
 #include "NPCChatSubsystem.generated.h"
@@ -61,6 +62,13 @@ public:
 	FString GetNpcName() const { return Persona.Name; }
 	bool IsWaitingForReply() const { return bWaiting; }
 
+	/** Push-to-talk (panel holds Tab): mic -> local whisper.cpp -> SendPlayerLine. */
+	void StartVoice();
+	void StopVoiceAndSend();
+	bool IsCapturingVoice() const { return bCapturing; }
+	bool IsTranscribing() const { return bTranscribing; }
+	bool HasVoiceInput() const { return !SttBinary.IsEmpty(); }
+
 private:
 	// --- target / lifecycle
 	ABullyCharacter* FindNearestNpc(ABullyPlayerController* PC, FString& OutPedKey) const;
@@ -88,7 +96,11 @@ private:
 	void OnSpeech(FHttpRequestPtr Req, FHttpResponsePtr Resp, bool bOk);
 	static bool ParseWav(const TArray<uint8>& Bytes, int32& OutRate, int32& OutChannels, TArray<uint8>& OutPcm);
 
+	// --- STT (push-to-talk)
+	void OnTranscribed(const FString& Text);
+
 	// config (Config/NPCChat.json)
+	FString SttBinary, SttModelPath, SttLanguage;
 	FString LlmBaseUrl, LlmModel, LlmKey;
 	float LlmTemperature = 0.9f;
 	int32 LlmMaxTokens = 180;
@@ -112,6 +124,14 @@ private:
 
 	UPROPERTY(Transient) TObjectPtr<USoundWaveProcedural> SpeechWave;
 	UPROPERTY(Transient) TObjectPtr<UAudioComponent> SpeechAudio;
+
+	// push-to-talk capture state (VoiceBuffer filled on the audio thread under VoiceLock)
+	Audio::FAudioCapture VoiceCapture;
+	FCriticalSection VoiceLock;
+	TArray<float> VoiceBuffer;      // mono mixdown at VoiceSampleRate
+	int32 VoiceSampleRate = 0;
+	bool bCapturing = false;
+	bool bTranscribing = false;
 
 	// headless smoke (-BRNPCChatSmoke, nullrhi): open a chat with the nearest NPC, send one line, wait for the
 	// LLM reply, close (fires the memory summary), then verify Saved/NPCChat/<ped>.json appears. Logs

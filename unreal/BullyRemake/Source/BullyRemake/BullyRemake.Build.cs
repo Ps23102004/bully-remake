@@ -18,8 +18,9 @@ public class BullyRemake : ModuleRules
 		// BullyShotRunner: JSON shot lists for offscreen evidence captures.
 		PrivateDependencyModuleNames.AddRange(new string[] { "Json" });
 
-		// NPCChatSubsystem (ai-npc): OpenAI-compatible LLM chat + Fish Audio TTS over HTTP.
-		PrivateDependencyModuleNames.AddRange(new string[] { "HTTP" });
+		// NPCChatSubsystem (ai-npc): OpenAI-compatible LLM chat + Fish Audio TTS over HTTP; push-to-talk mic capture
+		// transcribed by a local whisper.cpp binary.
+		PrivateDependencyModuleNames.AddRange(new string[] { "HTTP", "AudioCapture", "AudioCaptureCore" });
 
 		// BullyPlayerController: the Esc settings menu is a pure-C++ Slate overlay (no editor-authored UMG asset).
 		PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });

@@ -14,6 +14,12 @@
     "model": "s1",
     "api_key_file": "~/.claude/secrets/fish-audio.key"
   },
+  "stt": {
+    "enabled": true,
+    "binary": "/opt/homebrew/bin/whisper-cli",
+    "model": "~/.cache/whisper/ggml-base.en.bin",
+    "language": "en"
+  },
   "interact_radius_cm": 350,
   "world_facts": [
     "It is Jimmy Hopkins' first day at Bullworth Academy, a run-down boarding school full of cliques: Bullies, Nerds, Preps, Greasers and Jocks.",

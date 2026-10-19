@@ -2,6 +2,7 @@
 #include "NPCChatSubsystem.h"
 
 #include "AmbientWalker.h"
+#include "Async/Async.h"
 #include "BullyCharacter.h"
 #include "BullyPlayerController.h"
 #include "BullyScriptedNPC.h"
@@ -96,9 +97,14 @@ public:
 						+ SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 0)
 						[
 							SNew(STextBlock).Font(Small).ColorAndOpacity(Dim)
-							.Text_Lambda([this]()
+							.Text_Lambda([this]() -> FText
 							{
-								return FText::FromString(Owner && Owner->IsWaitingForReply() ? TEXT("...") : TEXT(""));
+								if (!Owner) { return FText::GetEmpty(); }
+								if (Owner->IsCapturingVoice()) { return FText::FromString(TEXT("listening... (release Tab to send)")); }
+								if (Owner->IsTranscribing()) { return FText::FromString(TEXT("transcribing...")); }
+								if (Owner->IsWaitingForReply()) { return FText::FromString(TEXT("...")); }
+								if (Owner->HasVoiceInput()) { return FText::FromString(TEXT("hold Tab to talk")); }
+								return FText::GetEmpty();
 							})
 						]
 					]
@@ -145,6 +151,27 @@ public:
 			return FReply::Handled();
 		}
 		return SCompoundWidget::OnKeyDown(Geo, Event);
+	}
+	// Push-to-talk on Tab via the PREVIEW pass: it fires before the focused text box, so Tab never reaches
+	// Slate focus navigation or the input field.
+	virtual FReply OnPreviewKeyDown(const FGeometry& Geo, const FKeyEvent& Event) override
+	{
+		if (Event.GetKey() == EKeys::Tab)
+		{
+			if (Owner && !Event.IsRepeat()) { Owner->StartVoice(); }
+			return FReply::Handled();
+		}
+		return SCompoundWidget::OnPreviewKeyDown(Geo, Event);
+	}
+	// No preview pass exists for key-up; the release bubbles up from the (non-consuming) text box to here.
+	virtual FReply OnKeyUp(const FGeometry& Geo, const FKeyEvent& Event) override
+	{
+		if (Event.GetKey() == EKeys::Tab)
+		{
+			if (Owner) { Owner->StopVoiceAndSend(); }
+			return FReply::Handled();
+		}
+		return SCompoundWidget::OnKeyUp(Geo, Event);
 	}
 
 	UNPCChatSubsystem* Owner = nullptr;
@@ -307,6 +334,27 @@ bool UNPCChatSubsystem::LoadConfig()
 		(*Tts)->TryGetStringField(TEXT("api_key_file"), KeyFile);
 		TtsKey = ReadKeyFile(KeyFile);
 		(*Tts)->TryGetBoolField(TEXT("enabled"), bTtsEnabled);
+	}
+	if (const TSharedPtr<FJsonObject>* Stt; Root->TryGetObjectField(TEXT("stt"), Stt))
+	{
+		bool bSttEnabled = true;
+		(*Stt)->TryGetBoolField(TEXT("enabled"), bSttEnabled);
+		if (bSttEnabled)
+		{
+			(*Stt)->TryGetStringField(TEXT("binary"), SttBinary);
+			(*Stt)->TryGetStringField(TEXT("model"), SttModelPath);
+			(*Stt)->TryGetStringField(TEXT("language"), SttLanguage);
+			if (SttModelPath.StartsWith(TEXT("~/")))
+			{
+				SttModelPath = FPaths::Combine(FPlatformProcess::UserHomeDir(), SttModelPath.Mid(2));
+			}
+			// voice input quietly turns off when the tools are not on this machine
+			if (!FPaths::FileExists(SttBinary) || !FPaths::FileExists(SttModelPath))
+			{
+				UE_LOG(LogNPCChat, Warning, TEXT("BR_NPCCHAT stt disabled: %s / %s not found"), *SttBinary, *SttModelPath);
+				SttBinary.Empty();
+			}
+		}
 	}
 	Root->TryGetNumberField(TEXT("interact_radius_cm"), InteractRadius);
 	if (const TArray<TSharedPtr<FJsonValue>>* Arr; Root->TryGetArrayField(TEXT("world_facts"), Arr))
@@ -504,6 +552,12 @@ void UNPCChatSubsystem::HoldNpc(bool bHold)
 
 void UNPCChatSubsystem::CloseChat()
 {
+	if (bCapturing)
+	{
+		bCapturing = false;
+		VoiceCapture.StopStream();
+		VoiceCapture.CloseStream();
+	}
 	if (Panel.IsValid() && GEngine && GEngine->GameViewport)
 	{
 		GEngine->GameViewport->RemoveViewportWidgetContent(Panel.ToSharedRef());
@@ -745,6 +799,133 @@ void UNPCChatSubsystem::RequestMemorySummary(const FString& PedKey, TArray<FNPCC
 		UE_LOG(LogNPCChat, Display, TEXT("BR_NPCCHAT memory saved: %d facts -> %s"), NewFacts.Num(), *SavePath);
 	});
 	Req->ProcessRequest();
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// STT: push-to-talk. Mic samples are mixed to mono on the audio thread; on release they are resampled to 16 kHz,
+// written as a wav into Saved/NPCChat/, and handed to a local whisper.cpp binary on a worker thread.
+
+void UNPCChatSubsystem::StartVoice()
+{
+	if (bCapturing || bTranscribing || SttBinary.IsEmpty() || !IsChatOpen()) { return; }
+	{
+		FScopeLock Lock(&VoiceLock);
+		VoiceBuffer.Reset();
+		VoiceSampleRate = 0;
+	}
+	Audio::FAudioCaptureDeviceParams Params; // default device
+	Audio::FOnAudioCaptureFunction OnCapture = [this](const void* InAudio, int32 NumFrames, int32 NumChannels, int32 SampleRate, double, bool)
+	{
+		const float* Samples = static_cast<const float*>(InAudio);
+		FScopeLock Lock(&VoiceLock);
+		VoiceSampleRate = SampleRate;
+		if (VoiceBuffer.Num() > SampleRate * 30) { return; } // 30 s cap
+		VoiceBuffer.Reserve(VoiceBuffer.Num() + NumFrames);
+		for (int32 F = 0; F < NumFrames; ++F)
+		{
+			float Mono = 0.f;
+			for (int32 C = 0; C < NumChannels; ++C) { Mono += Samples[F * NumChannels + C]; }
+			VoiceBuffer.Add(Mono / FMath::Max(1, NumChannels));
+		}
+	};
+	if (!VoiceCapture.OpenAudioCaptureStream(Params, MoveTemp(OnCapture), 1024) || !VoiceCapture.StartStream())
+	{
+		UE_LOG(LogNPCChat, Warning, TEXT("BR_NPCCHAT mic open failed (permission denied, or no input device)"));
+		return;
+	}
+	bCapturing = true;
+	UE_LOG(LogNPCChat, Display, TEXT("BR_NPCCHAT listening..."));
+}
+
+void UNPCChatSubsystem::StopVoiceAndSend()
+{
+	if (!bCapturing) { return; }
+	bCapturing = false;
+	VoiceCapture.StopStream();
+	VoiceCapture.CloseStream();
+
+	TArray<float> Samples;
+	int32 Rate = 0;
+	{
+		FScopeLock Lock(&VoiceLock);
+		Samples = MoveTemp(VoiceBuffer);
+		Rate = VoiceSampleRate;
+	}
+	if (Rate <= 0 || Samples.Num() < Rate / 4) // under ~250 ms is a key tap, not speech
+	{
+		UE_LOG(LogNPCChat, Display, TEXT("BR_NPCCHAT voice: too short, ignored (%d samples @ %d)"), Samples.Num(), Rate);
+		return;
+	}
+
+	// resample to 16 kHz mono 16-bit (what whisper.cpp wants) and write a wav
+	const int32 OutRate = 16000;
+	const int32 OutFrames = static_cast<int32>(static_cast<int64>(Samples.Num()) * OutRate / Rate);
+	TArray<uint8> Wav;
+	Wav.Reserve(44 + OutFrames * 2);
+	auto Put32 = [&Wav](uint32 V) { Wav.Append(reinterpret_cast<uint8*>(&V), 4); };
+	auto Put16 = [&Wav](uint16 V) { Wav.Append(reinterpret_cast<uint8*>(&V), 2); };
+	Wav.Append(reinterpret_cast<const uint8*>("RIFF"), 4); Put32(36 + OutFrames * 2);
+	Wav.Append(reinterpret_cast<const uint8*>("WAVE"), 4);
+	Wav.Append(reinterpret_cast<const uint8*>("fmt "), 4); Put32(16);
+	Put16(1); Put16(1); Put32(OutRate); Put32(OutRate * 2); Put16(2); Put16(16);
+	Wav.Append(reinterpret_cast<const uint8*>("data"), 4); Put32(OutFrames * 2);
+	for (int32 F = 0; F < OutFrames; ++F)
+	{
+		const double SrcPos = static_cast<double>(F) * Rate / OutRate;
+		const int32 I0 = FMath::Min(static_cast<int32>(SrcPos), Samples.Num() - 1);
+		const int32 I1 = FMath::Min(I0 + 1, Samples.Num() - 1);
+		const float Frac = static_cast<float>(SrcPos - I0);
+		const float S = FMath::Clamp(FMath::Lerp(Samples[I0], Samples[I1], Frac), -1.f, 1.f);
+		Put16(static_cast<uint16>(static_cast<int16>(S * 32767.f)));
+	}
+	const FString WavPath = FPaths::ProjectSavedDir() / TEXT("NPCChat") / TEXT("voice_input.wav");
+	if (!FFileHelper::SaveArrayToFile(Wav, *WavPath))
+	{
+		UE_LOG(LogNPCChat, Warning, TEXT("BR_NPCCHAT voice: could not write %s"), *WavPath);
+		return;
+	}
+
+	bTranscribing = true;
+	const FString Binary = SttBinary, Model = SttModelPath;
+	const FString Lang = SttLanguage.IsEmpty() ? TEXT("en") : SttLanguage;
+	TWeakObjectPtr<UNPCChatSubsystem> WeakThis(this);
+	Async(EAsyncExecution::Thread, [WeakThis, Binary, Model, Lang, WavPath]()
+	{
+		const FString Args = FString::Printf(TEXT("-m \"%s\" -f \"%s\" --language %s -nt -np"), *Model, *WavPath, *Lang);
+		int32 Code = -1;
+		FString StdOut, StdErr;
+		FPlatformProcess::ExecProcess(*Binary, *Args, &Code, &StdOut, &StdErr);
+		FString Text = StdOut.TrimStartAndEnd();
+		if (Code != 0)
+		{
+			UE_LOG(LogNPCChat, Warning, TEXT("BR_NPCCHAT whisper exit %d: %s"), Code, *StdErr.Left(200));
+			Text.Empty();
+		}
+		AsyncTask(ENamedThreads::GameThread, [WeakThis, Text]()
+		{
+			if (UNPCChatSubsystem* Self = WeakThis.Get()) { Self->OnTranscribed(Text); }
+		});
+	});
+}
+
+void UNPCChatSubsystem::OnTranscribed(const FString& InText)
+{
+	bTranscribing = false;
+	FString Text = InText;
+	// whisper emits bracketed non-speech markers ("[BLANK_AUDIO]", "(wind blowing)") when there are no words
+	Text.ReplaceInline(TEXT("\n"), TEXT(" "));
+	Text.TrimStartAndEndInline();
+	if (Text.IsEmpty() || (Text.StartsWith(TEXT("[")) && Text.EndsWith(TEXT("]"))) || (Text.StartsWith(TEXT("(")) && Text.EndsWith(TEXT(")"))))
+	{
+		UE_LOG(LogNPCChat, Display, TEXT("BR_NPCCHAT voice: no speech detected"));
+		return;
+	}
+	UE_LOG(LogNPCChat, Display, TEXT("BR_NPCCHAT voice -> \"%s\""), *Text);
+	if (IsChatOpen())
+	{
+		SendPlayerLine(Text);
+		if (Panel.IsValid()) { Panel->Refresh(); }
+	}
 }
 
 // ---------------------------------------------------------------------------------------------------------------
