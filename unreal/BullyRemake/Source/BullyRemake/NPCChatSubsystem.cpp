@@ -705,15 +705,18 @@ bool UNPCChatSubsystem::ParseWav(const TArray<uint8>& Bytes, int32& OutRate, int
 	{
 		return false;
 	}
-	int32 Pos = 12;
+	// Chunk sizes come off the network: walk with 64-bit offsets and never trust Size (a hostile/truncated
+	// wav must not overflow Pos or read past the buffer).
+	int64 Pos = 12;
+	const int64 Total = Bytes.Num();
 	OutRate = 0;
 	OutChannels = 0;
 	int16 Bits = 0;
-	while (Pos + 8 <= Bytes.Num())
+	while (Pos + 8 <= Total)
 	{
 		const uint8* P = Bytes.GetData() + Pos;
-		const uint32 Size = P[4] | (P[5] << 8) | (P[6] << 16) | (P[7] << 24);
-		if (FMemory::Memcmp(P, "fmt ", 4) == 0 && Pos + 8 + 16 <= Bytes.Num())
+		const int64 Size = static_cast<int64>(P[4]) | (static_cast<int64>(P[5]) << 8) | (static_cast<int64>(P[6]) << 16) | (static_cast<int64>(P[7]) << 24);
+		if (FMemory::Memcmp(P, "fmt ", 4) == 0 && Size >= 16 && Pos + 8 + 16 <= Total)
 		{
 			OutChannels = P[8 + 2] | (P[8 + 3] << 8);
 			OutRate = P[8 + 4] | (P[8 + 5] << 8) | (P[8 + 6] << 16) | (P[8 + 7] << 24);
@@ -721,11 +724,11 @@ bool UNPCChatSubsystem::ParseWav(const TArray<uint8>& Bytes, int32& OutRate, int
 		}
 		else if (FMemory::Memcmp(P, "data", 4) == 0)
 		{
-			const uint32 Have = FMath::Min<uint32>(Size, Bytes.Num() - Pos - 8);
-			OutPcm.Append(P + 8, Have);
+			const int64 Have = FMath::Min<int64>(Size, Total - Pos - 8);
+			if (Have > 0) { OutPcm.Append(P + 8, Have); }
 			break;
 		}
-		Pos += 8 + Size + (Size & 1);
+		Pos += 8 + Size + (Size & 1); // always advances (Size >= 0)
 	}
 	return OutRate > 0 && OutChannels > 0 && Bits == 16 && OutPcm.Num() > 0;
 }
