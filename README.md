@@ -1,12 +1,29 @@
 # Bully Remake — Unreal Engine 5.8
 
-An **unofficial, non-commercial, work-in-progress fan project** exploring *Bully: Scholarship Edition* in Unreal Engine, built with AI assistance and developed in public.
+**A one-to-one port of the original *Bully: Scholarship Edition* to Unreal Engine. 1080p, 45 FPS, playable anywhere. Bring your own copy. This is original code.**
 
-**This is an experiment you can try and build on, not a finished remake. I probably won't finish the entire game. There is no promise of a full-game release, complete campaign, or release date.** The aim is to let people explore what works today and continue experimenting themselves.
+An **unofficial, non-commercial fan project**, built in public, by AI, on a Mac — because we love this game.
+
+"One-to-one" is the goal we measure against, not a finished product: what's here today is the academy grounds, the Day One opening slice, and some new experiments the original never had (talk to any NPC with your actual voice, powered by an LLM, and fight anyone on campus). **This is an experiment you can try and build on, not a finished remake. There is no promise of a full-game release, complete campaign, or release date.**
+
+**You need your own legally obtained, installed PC copy of Bully: Scholarship Edition. Buy it — seriously, buy it, it's one of the best games ever made and Rockstar deserves the money. Do not pirate it. No original game assets are included here and none ever will be.** The importers read *your* installed copy on *your* machine and everything generated stays local.
+
+## Built with AI, proudly, in the open
+
+Total transparency, because we think this is the interesting part:
+
+- **Almost everything in this repository was written by AI, on Macs.** The orchestrating agent is **Claude (Claude Code, Fable 5)**, with Opus 5.5 / Sonnet 5.5 / Haiku 5.5 subagents doing builds, critiques, and legwork. The human's job was direction, playtesting, taste, and saying "no."
+- **Timeline:** repo created **2026-10-15**. Phase 0 — world import, Jimmy's locomotion, doors, ambient students, audio decoding, the mission framework, melee combat, an in-engine cutscene — landed in the first **4 days**. The AI NPC conversation system (LLM dialogue, per-NPC long-term memory, voice replies, push-to-talk speech input) and campus-wide brawling landed on **day 5**. Development is ongoing.
+- **Hardware:** an M3 Ultra Mac Studio (heavy lifting: imports, renders, headless test runs) and an Apple Silicon MacBook (play, iteration). No PC was involved in building this Mac-native UE build.
+- **The original game runs on Mac via [CrossOver](https://www.codeweavers.com/crossover)** — that's how we installed the Steam PC edition locally for the importers to read, and how we capture reference footage of the real game to compare against.
+- **In-game AI stack** (all swappable in `Config/NPCChat.json`, bring your own API keys): an OpenAI-compatible LLM endpoint for NPC dialogue and memory summarization (we run MiniMax M2.7-highspeed; a local model works too), [Fish Audio](https://fish.audio) for per-character NPC voices, and local [whisper.cpp](https://github.com/ggerganov/whisper.cpp) for push-to-talk speech input — your mic audio never leaves your machine.
+- **Other tools:** Unreal Engine 5.8, custom Python importers written for this repo (world, skeletal meshes, 4,374 animation clips, XACT audio), and our own reverse-engineering notes in [docs/re-notes/](docs/re-notes/).
 
 You can give this repository to a coding agent and ask it to help set up the available content on your own computer. Read the requirements and known setup blockers below first: this is currently a developer workflow, not a one-click game download.
 
-**You need your own legally obtained, installed PC copy of Bully: Scholarship Edition. No original game assets are included.**
+## The legal bit, in plain words
+
+We are fans. This is a love letter, not a business: no sales, no donations, no ads, no distribution of Rockstar's content — only original code (MIT) that knows how to read the copy of the game *you* bought. We are not trying to pull anything legally insane here. **If Rockstar or Take-Two ever object — a cease and desist, a polite email, anything — we will stop and take this down immediately, no argument.** Until then we're just having fun rebuilding the schoolyard we grew up in, and hoping it makes a few more people go buy the original. The formal version of all this is in "Ownership, rights, and intent" below.
 
 ## Copy/paste this into your coding agent
 
@@ -61,9 +78,13 @@ An agent can help inspect and diagnose this project; it cannot guarantee compati
 
 ## What can I try today?
 
-### `main`: campus exploration + the Day One opening slice
+### `main`: campus exploration, the Day One opening slice, AI conversations, campus-wide brawling
 
-Status checked **2026-10-17**, against commit [`ee28789`](https://github.com/oh-ashen-one/bully-remake/commit/ee28789). `main` is the most up-to-date version of the project; the Day One opening work that previously lived on a separate branch has been merged in.
+Status checked **2026-10-19**, against commit [`69abe5a`](https://github.com/oh-ashen-one/bully-remake/commit/69abe5a). `main` is the most up-to-date version of the project; the Day One opening work and the AI NPC branch have been merged in.
+
+**New — talk to anyone (`T`):** walk up to any student and press `T`. A chat panel opens, the NPC stops and faces you, and an LLM answers in character — every ped has an authored persona in [`Config/NPCChat.json`](unreal/BullyRemake/Config/NPCChat.json). **Hold `Tab` to talk with your actual voice** (transcribed locally by whisper.cpp), and replies are spoken aloud in a per-character Fish Audio voice. When a conversation ends, one summarization call distills it into a small set of first-person memories per NPC (`Saved/NPCChat/<ped>.json`) that are fed back into every later conversation — insult someone, come back tomorrow, and they remember. Bring your own API keys (an OpenAI-compatible LLM endpoint and optionally Fish Audio); with no keys it degrades to silence, never an error.
+
+**New — fight anyone:** every student and mission bully is now a valid combat target with the full melee stack (combos, blocking, grapples, knockdowns, KO). The first real hit makes them drop whatever they were doing — their walking loop, even their mission script — and fight back with the same AI as the sparring partner. KO'd students stay down.
 
 The repository's development records report these working on the development Mac:
 
