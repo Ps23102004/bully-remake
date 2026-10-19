@@ -248,7 +248,7 @@ bool UNPCChatSubsystem::LoadConfig()
 			P->TryGetStringField(TEXT("name"), Out.Name);
 			P->TryGetStringField(TEXT("voice"), Out.Voice);
 			P->TryGetStringField(TEXT("persona"), Out.Persona);
-			Personas.Add(Pair.Key, Out);
+			Personas.Add(FString(Pair.Key), Out); // UE 5.8: json keys are TSharedString, not FString
 		}
 	}
 	const bool bLlmOk = !LlmBaseUrl.IsEmpty() && !LlmModel.IsEmpty();
