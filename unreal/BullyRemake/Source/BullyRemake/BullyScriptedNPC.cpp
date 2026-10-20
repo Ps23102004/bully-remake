@@ -4,6 +4,7 @@
 #include "Animation/AnimSequence.h"
 #include "Animation/Skeleton.h"
 #include "BullyAnimInstance.h"
+#include "BullyCombatComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
@@ -205,6 +206,18 @@ void ABullyScriptedNPC::Tick(float Dt)
 	UWorld* W = GetWorld();
 	if (!W) { return; }
 	if (bPendingDestroy) { Destroy(); return; }
+
+	// fight anybody (AAmbientWalker::StartBrawl): a punched mission NPC drops its script and fights back
+	if (UBullyCombatComponent* C = GetCombat())
+	{
+		if (BrawlRefHealth < 0.f) { BrawlRefHealth = C->Health; }
+		if (!bBrawling && C->Health < BrawlRefHealth)
+		{
+			ClearCommands(true);
+			StartBrawl();
+		}
+		if (bBrawling || C->GetState() != EBullyCombatState::Idle) { return; }
+	}
 	const double Now = W->GetTimeSeconds();
 
 	if (!bHasCurrent && Queue.Num() > 0)

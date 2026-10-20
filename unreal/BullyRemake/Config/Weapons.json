@@ -1,0 +1,22 @@
+{
+  "_format": "bully-remake.weapons/1",
+  "_note": "Data-driven arsenal: gameplay numbers only, no game assets. category 'ranged' fires a fast shot at the camera-ray / lock-on point; 'thrown' lobs a ballistic arc onto it. reaction: none|flinch|stagger|knockdown|ground|ko. effect: none|stun|gas|slip|fire|knockback lasting effect_s (gas = lingering cloud of aoe_cm; fire = burn ticks; stun >= 1 s = repeated stun beats; slip = knockdown; knockback = shove). 'mesh' = optional local static-mesh path for the projectile; empty draws an engine sphere sized to radius_cm. All weapons start unlocked with 'ammo'; console BRGiveWeapons refills to 'ammo_max'.",
+  "weapons": [
+    { "id": "slingshot",    "name": "Slingshot",      "category": "ranged", "speed_cm_s": 6000, "gravity": 0.05, "radius_cm": 6,  "lifetime_s": 3,
+      "damage": 6,  "reaction": "flinch",    "aoe_cm": 0,   "effect": "stun",      "effect_s": 0.6, "ammo": 30, "ammo_max": 40, "fire_interval_s": 0.45, "mesh": "" },
+    { "id": "spudgun",      "name": "Spud Gun",       "category": "ranged", "speed_cm_s": 4500, "gravity": 0.25, "radius_cm": 10, "lifetime_s": 3,
+      "damage": 10, "reaction": "stagger",   "aoe_cm": 0,   "effect": "knockback", "effect_s": 0.3, "ammo": 15, "ammo_max": 20, "fire_interval_s": 0.9,  "mesh": "" },
+    { "id": "bottlerocket", "name": "Bottle Rockets", "category": "ranged", "speed_cm_s": 3500, "gravity": 0.0,  "radius_cm": 8,  "lifetime_s": 3,
+      "damage": 12, "reaction": "knockdown", "aoe_cm": 180, "effect": "fire",      "effect_s": 1.5, "ammo": 10, "ammo_max": 15, "fire_interval_s": 1.0,  "mesh": "" },
+    { "id": "eggs",         "name": "Eggs",           "category": "thrown", "speed_cm_s": 1600, "gravity": 1.0,  "radius_cm": 8,  "lifetime_s": 4,
+      "damage": 2,  "reaction": "flinch",    "aoe_cm": 0,   "effect": "none",      "effect_s": 0.0, "ammo": 20, "ammo_max": 30, "fire_interval_s": 0.5,  "mesh": "" },
+    { "id": "stinkbomb",    "name": "Stink Bomb",     "category": "thrown", "speed_cm_s": 1500, "gravity": 1.0,  "radius_cm": 10, "lifetime_s": 4,
+      "damage": 3,  "reaction": "stagger",   "aoe_cm": 350, "effect": "gas",       "effect_s": 4.0, "ammo": 8,  "ammo_max": 12, "fire_interval_s": 1.0,  "mesh": "" },
+    { "id": "firecracker",  "name": "Firecrackers",   "category": "thrown", "speed_cm_s": 1600, "gravity": 1.0,  "radius_cm": 7,  "lifetime_s": 2.5,
+      "damage": 12, "reaction": "knockdown", "aoe_cm": 220, "effect": "fire",      "effect_s": 1.0, "ammo": 12, "ammo_max": 20, "fire_interval_s": 0.8,  "mesh": "" },
+    { "id": "marbles",      "name": "Marbles",        "category": "thrown", "speed_cm_s": 1400, "gravity": 1.0,  "radius_cm": 6,  "lifetime_s": 4,
+      "damage": 1,  "reaction": "none",      "aoe_cm": 250, "effect": "slip",      "effect_s": 3.0, "ammo": 40, "ammo_max": 60, "fire_interval_s": 0.7,  "mesh": "" },
+    { "id": "itchpowder",   "name": "Itching Powder", "category": "thrown", "speed_cm_s": 1500, "gravity": 1.0,  "radius_cm": 9,  "lifetime_s": 4,
+      "damage": 1,  "reaction": "flinch",    "aoe_cm": 300, "effect": "stun",      "effect_s": 3.0, "ammo": 10, "ammo_max": 15, "fire_interval_s": 0.9,  "mesh": "" }
+  ]
+}

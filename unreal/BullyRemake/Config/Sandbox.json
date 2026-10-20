@@ -1,0 +1,9 @@
+{
+  "_format": "bully-remake.sandbox/1",
+  "_note": "Free-play start. When enabled (and no mission boot / no test harness flags), the player starts at 'start' (a key from InteriorSpots.json) on an open, flat patch of street found automatically near that spot, facing a lineup of 'vehicles' (ids from Vehicles.json). All weapons are unlocked. -BRSandbox[=spot] forces it on, -BRNoSandbox turns it off.",
+  "enabled": true,
+  "start": "town",
+  "vehicles": ["bike", "skateboard", "gokart", "car"],
+  "search_radius_cm": 7000,
+  "min_ground_z_cm": 200
+}

@@ -1,0 +1,11 @@
+{
+ "_owner": "ai-npc",
+ "_note": "Headless NPC-chat smoke (run with tools/ue/run_walk_nullrhi.sh + BR_EXTRA_ARGS=-BRNPCChatSmoke). The walk runner idles in place (the 30000 game-second wait is ~8 real minutes at turbo fixed-timestep, an upper bound only); the smoke ticker in UNPCChatSubsystem runs on WALL time, opens a chat with the nearest walker, gets a real LLM reply, closes, verifies the memory summary lands in Saved/NPCChat/, then QUITS the engine itself. Grep the log for 'BR_NPCCHAT SMOKE OK'.",
+ "warmup_seconds": 10,
+ "settle_seconds": 2,
+ "steps": [
+  { "do": "log", "name": "npcchat-smoke-idle" },
+  { "do": "wait", "seconds": 30000 },
+  { "do": "log", "name": "npcchat-smoke-done" }
+ ]
+}

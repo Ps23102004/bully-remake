@@ -4,6 +4,8 @@
 #include "BullyAnimInstance.h"
 #include "BullyCombatAnimInstance.h"
 #include "BullyCombatComponent.h"
+#include "BullyWeaponComponent.h"
+#include "BullyVehicle.h"
 #include "Camera/CameraComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/CapsuleComponent.h"
@@ -94,6 +96,7 @@ ABullyCharacter::ABullyCharacter()
 
 	// slice-combat: melee for the player (the enemy pawn subclass flips the team)
 	Combat = CreateDefaultSubobject<UBullyCombatComponent>(TEXT("Combat"));
+	Weapons = CreateDefaultSubobject<UBullyWeaponComponent>(TEXT("Weapons"));
 
 	// Placeholder body (engine primitives): shown only when the imported Jimmy assets are missing.
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderFinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
@@ -494,6 +497,10 @@ void ABullyCharacter::BuildInputAssets()
 	BlockAction->ValueType = EInputActionValueType::Boolean;
 	LockOnAction = NewObject<UInputAction>(this, TEXT("IA_LockOn"));
 	LockOnAction->ValueType = EInputActionValueType::Boolean;
+	WeaponNextAction = NewObject<UInputAction>(this, TEXT("IA_WeaponNext"));
+	WeaponNextAction->ValueType = EInputActionValueType::Boolean;
+	WeaponPrevAction = NewObject<UInputAction>(this, TEXT("IA_WeaponPrev"));
+	WeaponPrevAction->ValueType = EInputActionValueType::Boolean;
 
 	auto Swizzle = [this]() { UInputModifierSwizzleAxis* M = NewObject<UInputModifierSwizzleAxis>(this); M->Order = EInputAxisSwizzle::YXZ; return M; };
 	auto Negate = [this](bool X, bool Y, bool Z) { UInputModifierNegate* M = NewObject<UInputModifierNegate>(this); M->bX = X; M->bY = Y; M->bZ = Z; return M; };
@@ -537,6 +544,13 @@ void ABullyCharacter::BuildInputAssets()
 	MappingContext->MapKey(BlockAction, EKeys::Gamepad_LeftShoulder);
 	MappingContext->MapKey(LockOnAction, EKeys::RightMouseButton);
 	MappingContext->MapKey(LockOnAction, EKeys::Gamepad_RightTrigger);
+
+	// slice-weapons: mouse wheel / D-pad left-right cycle Fists -> each weapon with ammo. LMB / B fires when one is out.
+	// (The number row stays on the interior quick-teleport cheat.)
+	MappingContext->MapKey(WeaponNextAction, EKeys::MouseScrollUp);
+	MappingContext->MapKey(WeaponNextAction, EKeys::Gamepad_DPad_Right);
+	MappingContext->MapKey(WeaponPrevAction, EKeys::MouseScrollDown);
+	MappingContext->MapKey(WeaponPrevAction, EKeys::Gamepad_DPad_Left);
 }
 
 const UInputAction* ABullyCharacter::GetCombatAction(FName Which) const
@@ -606,6 +620,8 @@ void ABullyCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 		EIC->BindAction(BlockAction, ETriggerEvent::Completed, this, &ABullyCharacter::OnBlockEnd);
 		EIC->BindAction(LockOnAction, ETriggerEvent::Started, this, &ABullyCharacter::OnLockOn);
 		EIC->BindAction(LockOnAction, ETriggerEvent::Completed, this, &ABullyCharacter::OnLockOnEnd);
+		EIC->BindAction(WeaponNextAction, ETriggerEvent::Started, this, &ABullyCharacter::OnWeaponNext);
+		EIC->BindAction(WeaponPrevAction, ETriggerEvent::Started, this, &ABullyCharacter::OnWeaponPrev);
 	}
 	else
 	{
@@ -710,7 +726,30 @@ void ABullyCharacter::OnJumpPressed(const FInputActionValue& Value)
 
 void ABullyCharacter::OnAttack(const FInputActionValue& Value)
 {
+	// A weapon out: LMB fires it. Fists: melee as before.
+	if (Weapons && Weapons->HasEquipped()) { Weapons->Fire(); return; }
 	if (Combat) { Combat->RequestAttack(); }
+}
+
+void ABullyCharacter::OnWeaponNext(const FInputActionValue& Value)
+{
+	if (Weapons) { Weapons->Cycle(+1); }
+}
+
+void ABullyCharacter::OnWeaponPrev(const FInputActionValue& Value)
+{
+	if (Weapons) { Weapons->Cycle(-1); }
+}
+
+void ABullyCharacter::BRGiveWeapons()
+{
+	if (Weapons) { Weapons->RefillAll(); }
+}
+
+void ABullyCharacter::BRSpawnVehicle(const FString& Id)
+{
+	const FVector Fwd = FRotator(0.f, GetActorRotation().Yaw, 0.f).Vector();
+	ABullyVehicle::SpawnVehicle(GetWorld(), FName(*Id), GetActorLocation() + Fwd * 450.f, GetActorRotation().Yaw);
 }
 
 void ABullyCharacter::OnGrapple(const FInputActionValue& Value)

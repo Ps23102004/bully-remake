@@ -2,7 +2,9 @@
 #include "BullyPlayerController.h"
 
 #include "BullyCharacter.h"
+#include "BullyVehicle.h"
 #include "Containers/Ticker.h"
+#include "NPCChatSubsystem.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Framework/Application/SlateApplication.h"
@@ -14,9 +16,15 @@
 #include "Widgets/Input/SSlider.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogBullySettings, Log, All);
 
@@ -162,6 +170,132 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------------------------
+// Teleport menu: pick any imported area (Config/InteriorSpots.json) and warp there. Pure-C++ Slate, same envelope as
+// the settings menu. The actual warp + floor-snap lives in ABullyCharacter::BRGo.
+
+namespace
+{
+	// Friendlier labels for the generated spot keys; anything not listed is title-cased from the key.
+	FString TeleportLabel(const FString& Key)
+	{
+		static const TMap<FString, FString> Nice = {
+			{TEXT("academy"), TEXT("Bullworth Academy (gates)")}, {TEXT("ischool"), TEXT("Main School (lobby)")},
+			{TEXT("town"), TEXT("Town - Business District")}, {TEXT("vale"), TEXT("Old Bullworth Vale (rich)")},
+			{TEXT("coventry"), TEXT("New Coventry (industrial)")}, {TEXT("carnival"), TEXT("Carnival")},
+			{TEXT("junkyard"), TEXT("Junkyard")}, {TEXT("bmx"), TEXT("BMX Park")}, {TEXT("gokart"), TEXT("Go-Kart Track")},
+		};
+		if (const FString* Hit = Nice.Find(Key)) { return *Hit; }
+		FString S = Key.Replace(TEXT("_"), TEXT(" "));
+		if (S.Len() > 0) { S[0] = FChar::ToUpper(S[0]); }
+		return S;
+	}
+}
+
+class SBullyTeleportMenu : public SCompoundWidget
+{
+public:
+	SLATE_BEGIN_ARGS(SBullyTeleportMenu) {}
+		SLATE_ARGUMENT(TWeakObjectPtr<ABullyPlayerController>, Controller)
+	SLATE_END_ARGS()
+
+	void Construct(const FArguments& InArgs)
+	{
+		PC = InArgs._Controller;
+		const FSlateFontInfo Title = FCoreStyle::GetDefaultFontStyle("Bold", 28);
+		const FSlateFontInfo Label = FCoreStyle::GetDefaultFontStyle("Regular", 15);
+		const FSlateFontInfo Small = FCoreStyle::GetDefaultFontStyle("Regular", 12);
+		const FLinearColor Text(0.95f, 0.93f, 0.88f, 1.f);
+		const FLinearColor Dim(0.65f, 0.65f, 0.68f, 1.f);
+
+		TSharedRef<SScrollBox> List = SNew(SScrollBox);
+		for (const FString& Key : LoadSpotKeys())
+		{
+			const FString K = Key;
+			List->AddSlot().Padding(0, 3)
+			[
+				SNew(SButton)
+				.ContentPadding(FMargin(14.f, 7.f))
+				.HAlign(HAlign_Left)
+				.OnClicked_Lambda([this, K]()
+				{
+					if (PC.IsValid())
+					{
+						if (ABullyVehicle* Ride = Cast<ABullyVehicle>(PC->GetPawn())) { Ride->Dismount(); }   // hop off first
+						if (ABullyCharacter* C = Cast<ABullyCharacter>(PC->GetPawn())) { C->BRGo(K); }
+						PC->CloseTeleportMenu();
+					}
+					return FReply::Handled();
+				})
+				[
+					SNew(STextBlock).Text(FText::FromString(TeleportLabel(K))).Font(Label)
+				]
+			];
+		}
+
+		ChildSlot
+		[
+			SNew(SBorder)
+			.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
+			.BorderBackgroundColor(FLinearColor(0.f, 0.f, 0.f, 0.35f))
+			.HAlign(HAlign_Center).VAlign(VAlign_Center)
+			[
+				SNew(SBox).WidthOverride(520.f).MaxDesiredHeight(620.f)
+				[
+					SNew(SBorder)
+					.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
+					.BorderBackgroundColor(FLinearColor(0.04f, 0.04f, 0.06f, 0.90f))
+					.Padding(FMargin(28.f, 22.f))
+					[
+						SNew(SVerticalBox)
+						+ SVerticalBox::Slot().AutoHeight()
+						[
+							SNew(STextBlock).Text(FText::FromString(TEXT("Teleport"))).Font(Title).ColorAndOpacity(Text)
+						]
+						+ SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 10)
+						[
+							SNew(STextBlock).Text(FText::FromString(TEXT("Every area unlocked - pick a destination (G or Esc to close)"))).Font(Small).ColorAndOpacity(Dim)
+						]
+						+ SVerticalBox::Slot().FillHeight(1.f)
+						[
+							List
+						]
+					]
+				]
+			]
+		];
+	}
+
+	virtual bool SupportsKeyboardFocus() const override { return true; }
+	virtual FReply OnKeyDown(const FGeometry& Geo, const FKeyEvent& Event) override
+	{
+		if (Event.GetKey() == EKeys::Escape || Event.GetKey() == EKeys::G)
+		{
+			if (PC.IsValid()) { PC->CloseTeleportMenu(); }
+			return FReply::Handled();
+		}
+		return SCompoundWidget::OnKeyDown(Geo, Event);
+	}
+
+private:
+	// Spot keys in the manifest order written by tools/ue/gen_teleport_spots.py.
+	static TArray<FString> LoadSpotKeys()
+	{
+		TArray<FString> Keys;
+		FString Text;
+		const FString Path = FPaths::ProjectConfigDir() / TEXT("InteriorSpots.json");
+		if (!FFileHelper::LoadFileToString(Text, *Path)) { return Keys; }
+		TSharedPtr<FJsonObject> Root;
+		if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Root) || !Root.IsValid()) { return Keys; }
+		const TSharedPtr<FJsonObject>* Spots;
+		if (!Root->TryGetObjectField(TEXT("spots"), Spots)) { return Keys; }
+		for (const auto& It : (*Spots)->Values) { Keys.Add(FString(It.Key)); }   // UE 5.8 json keys are TSharedString
+		return Keys;
+	}
+
+	TWeakObjectPtr<ABullyPlayerController> PC;
+};
+
+// ---------------------------------------------------------------------------------------------------------------
 // controller
 
 void ABullyPlayerController::SetupInputComponent()
@@ -172,6 +306,22 @@ void ABullyPlayerController::SetupInputComponent()
 		FInputKeyBinding& B = InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &ABullyPlayerController::ToggleSettingsMenu);
 		B.bExecuteWhenPaused = true;
 		B.bConsumeInput = true;
+		// ai-npc: T opens/closes the NPC chat. While the chat panel has keyboard focus Slate eats the key,
+		// so typing a "t" into the input box does not re-trigger this.
+		InputComponent->BindKey(EKeys::T, IE_Pressed, this, &ABullyPlayerController::NPCChat);
+		// Teleport menu: G opens/closes the area picker (all areas unlocked). While it has focus Slate eats the key.
+		InputComponent->BindKey(EKeys::G, IE_Pressed, this, &ABullyPlayerController::ToggleTeleportMenu);
+	}
+}
+
+void ABullyPlayerController::NPCChat()
+{
+	if (UWorld* W = GetWorld())
+	{
+		if (UNPCChatSubsystem* Chat = W->GetSubsystem<UNPCChatSubsystem>())
+		{
+			Chat->Toggle(this);
+		}
 	}
 }
 
@@ -230,6 +380,10 @@ void ABullyPlayerController::EndPlay(const EEndPlayReason::Type Reason)
 	if (IsSettingsMenuOpen())
 	{
 		CloseSettingsMenu();
+	}
+	if (IsTeleportMenuOpen())
+	{
+		CloseTeleportMenu();
 	}
 	Super::EndPlay(Reason);
 }
@@ -300,6 +454,55 @@ void ABullyPlayerController::CloseSettingsMenu()
 	ApplyGameInputMode();
 	UE_LOG(LogBullySettings, Display, TEXT("BR_SETTINGS close: cursor=%d paused=%d inputMode=GameOnly lookIgnored=%d X=%.3f Y=%.3f invertY=%d"),
 		bShowMouseCursor ? 1 : 0, IsPaused() ? 1 : 0, IsLookInputIgnored() ? 1 : 0, GetLookX(), GetLookY(), GetInvertY() ? 1 : 0);
+}
+
+// ---- teleport menu (same open/close envelope as the settings menu)
+
+void ABullyPlayerController::ToggleTeleportMenu()
+{
+	const double Now = FPlatformTime::Seconds();
+	if (Now - LastToggleRealTime < 0.2) { return; }
+	LastToggleRealTime = Now;
+	if (IsSettingsMenuOpen()) { return; }   // one overlay at a time
+	if (IsTeleportMenuOpen()) { CloseTeleportMenu(); } else { OpenTeleportMenu(); }
+}
+
+void ABullyPlayerController::OpenTeleportMenu()
+{
+	if (IsTeleportMenuOpen() || !IsLocalController()) { return; }
+	if (!GEngine || !GEngine->GameViewport || !FSlateApplication::IsInitialized()) { return; }
+	LastToggleRealTime = FPlatformTime::Seconds();
+	TSharedRef<SBullyTeleportMenu> Menu = SNew(SBullyTeleportMenu).Controller(this);
+	TeleportWidget = Menu;
+	GEngine->GameViewport->AddViewportWidgetContent(Menu, 100);
+	FlushPressedKeys();
+	SetIgnoreLookInput(true);
+	SetIgnoreMoveInput(true);
+	SetPause(true);
+	FInputModeGameAndUI Mode;
+	Mode.SetWidgetToFocus(Menu);
+	Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	Mode.SetHideCursorDuringCapture(false);
+	SetInputMode(Mode);
+	SetShowMouseCursor(true);
+	UE_LOG(LogBullySettings, Display, TEXT("BR_TELEPORT menu open"));
+}
+
+void ABullyPlayerController::CloseTeleportMenu()
+{
+	if (!IsTeleportMenuOpen()) { return; }
+	LastToggleRealTime = FPlatformTime::Seconds();
+	if (GEngine && GEngine->GameViewport)
+	{
+		GEngine->GameViewport->RemoveViewportWidgetContent(TeleportWidget.ToSharedRef());
+	}
+	TeleportWidget.Reset();
+	SetPause(false);
+	SetIgnoreLookInput(false);
+	SetIgnoreMoveInput(false);
+	FlushPressedKeys();
+	ApplyGameInputMode();
+	UE_LOG(LogBullySettings, Display, TEXT("BR_TELEPORT menu close"));
 }
 
 // ---- look settings

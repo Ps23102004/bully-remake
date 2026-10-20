@@ -1,6 +1,8 @@
 // OWNER: builder-B4 (ambient)
 #include "AmbientWalker.h"
 
+#include "BullyCombatAI.h"
+#include "BullyCombatComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "EngineUtils.h"
@@ -24,6 +26,11 @@ AAmbientWalker::AAmbientWalker()
 void AAmbientWalker::BeginPlay()
 {
 	Super::BeginPlay();
+	// ai-npc "fight anybody": students are valid combat targets (see StartBrawl in the header)
+	if (UBullyCombatComponent* C = GetCombat())
+	{
+		C->Team = EBullyCombatTeam::Enemy;
+	}
 	// walkers pass through each other (both directions, every pair): see the class comment
 	if (UWorld* W = GetWorld())
 	{
@@ -49,6 +56,24 @@ void AAmbientWalker::Advance()
 	if (Waypoints.Num() == 0) { return; }
 	NextIndex = (NextIndex + 1) % Waypoints.Num();
 	if (NextIndex == StartIndex % Waypoints.Num()) { ++LoopsCompleted; }
+}
+
+void AAmbientWalker::StartBrawl()
+{
+	bBrawling = true;
+	bChatHold = false;
+	if (!Cast<ABullyCombatAIController>(GetController()))
+	{
+		if (UWorld* W = GetWorld())
+		{
+			if (ABullyCombatAIController* AI = W->SpawnActor<ABullyCombatAIController>())
+			{
+				AI->Possess(this);
+				AI->AttackSoon(0.8f);   // a beat of outrage before swinging back
+			}
+		}
+	}
+	UE_LOG(LogAmbient, Display, TEXT("BR_AMBIENT BRAWL %s (%s): dropped its routine, fighting the player"), *GetName(), *StudentId);
 }
 
 void AAmbientWalker::ResumeLoop(const TArray<FVector>& Loop, int32 Start)
@@ -156,6 +181,39 @@ void AAmbientWalker::Tick(float DeltaSeconds)
 	const FVector Pos = GetActorLocation();
 	PathWalked += FVector::Dist2D(Pos, LastPos);
 	LastPos = Pos;
+
+	// fight anybody: first health loss abandons the loop for the combat AI; while combat owns the body, no walking
+	if (UBullyCombatComponent* C = GetCombat())
+	{
+		if (BrawlRefHealth < 0.f) { BrawlRefHealth = C->Health; }
+		if (!bBrawling && C->Health < BrawlRefHealth) { StartBrawl(); }
+		if (bBrawling || C->GetState() != EBullyCombatState::Idle)
+		{
+			ProgressRefPos = Pos;
+			ProgressRefTime = Now;
+			return;
+		}
+	}
+
+	if (bChatHold)
+	{
+		// ai-npc conversation: stand still, turn to the player; held time is not a stuck candidate
+		if (const APlayerController* PC = W->GetFirstPlayerController())
+		{
+			if (const APawn* P = PC->GetPawn())
+			{
+				const FVector To = P->GetActorLocation() - Pos;
+				if (To.SizeSquared2D() > 1.f)
+				{
+					const FRotator Want(0.f, To.Rotation().Yaw, 0.f);
+					SetActorRotation(FMath::RInterpTo(GetActorRotation(), Want, DeltaSeconds, 6.f));
+				}
+			}
+		}
+		ProgressRefPos = Pos;
+		ProgressRefTime = Now;
+		return;
+	}
 
 	if (TickYield(Now, Pos))
 	{

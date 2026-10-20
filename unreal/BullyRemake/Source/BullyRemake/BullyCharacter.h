@@ -13,6 +13,7 @@ class UStaticMeshComponent;
 class UInputAction;
 class UInputMappingContext;
 class UBullyCombatComponent;
+class UBullyWeaponComponent;
 
 UENUM(BlueprintType)
 enum class EBullyGait : uint8
@@ -153,6 +154,8 @@ public:
 	float GetHorizontalSpeed() const;
 	/** slice-combat: melee (attack / block / grapple / lock-on), health and hit reactions. */
 	UBullyCombatComponent* GetCombat() const { return Combat; }
+	/** slice-weapons: the arsenal (Config/Weapons.json). LMB fires the equipped weapon; with Fists it melees. */
+	UBullyWeaponComponent* GetWeapons() const { return Weapons; }
 	bool HasJimmyMesh() const { return bHasJimmyMesh; }
 	/** Drops the camera boom's location lag for two frames (door teleports: no swoop from the old position). */
 	void SnapCamera();
@@ -202,6 +205,8 @@ private:
 	void OnBlockEnd(const FInputActionValue& Value);
 	void OnLockOn(const FInputActionValue& Value);
 	void OnLockOnEnd(const FInputActionValue& Value);
+	void OnWeaponNext(const FInputActionValue& Value);
+	void OnWeaponPrev(const FInputActionValue& Value);
 	void BuildInputAssets();
 	void UpdateGait();
 	void UpdateCamera(float Dt);
@@ -214,6 +219,7 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = "Bully") TObjectPtr<UStaticMeshComponent> BodyVis;
 	UPROPERTY(VisibleAnywhere, Category = "Bully") TObjectPtr<UStaticMeshComponent> HeadVis;
 	UPROPERTY(VisibleAnywhere, Category = "Bully") TObjectPtr<UBullyCombatComponent> Combat;
+	UPROPERTY(VisibleAnywhere, Category = "Bully") TObjectPtr<UBullyWeaponComponent> Weapons;
 
 	UPROPERTY(Transient) TObjectPtr<UInputMappingContext> MappingContext;
 	UPROPERTY(Transient) TObjectPtr<UInputAction> MoveAction;
@@ -226,6 +232,8 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UInputAction> GrappleAction;
 	UPROPERTY(Transient) TObjectPtr<UInputAction> BlockAction;
 	UPROPERTY(Transient) TObjectPtr<UInputAction> LockOnAction;
+	UPROPERTY(Transient) TObjectPtr<UInputAction> WeaponNextAction;
+	UPROPERTY(Transient) TObjectPtr<UInputAction> WeaponPrevAction;
 
 public:
 	/** Input actions (the headless combat test injects through them, exercising the real bindings). */
@@ -233,6 +241,10 @@ public:
 
 	/** Console: teleport into an imported interior pocket by name (Config/InteriorSpots.json); "BRGo list" lists them. */
 	UFUNCTION(Exec) void BRGo(const FString& Name);
+	/** Console: refill every weapon to max ammo. */
+	UFUNCTION(Exec) void BRGiveWeapons();
+	/** Console: spawn a ride (bike / skateboard / gokart / car, Config/Vehicles.json) a few metres ahead. */
+	UFUNCTION(Exec) void BRSpawnVehicle(const FString& Id);
 private:
 
 	EBullyGait Gait = EBullyGait::Run;

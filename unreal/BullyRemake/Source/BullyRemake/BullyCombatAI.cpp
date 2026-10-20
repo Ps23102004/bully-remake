@@ -38,8 +38,11 @@ void ABullyCombatAIController::AttackSoon(float Delay)
 void ABullyCombatAIController::Tick(float Dt)
 {
 	Super::Tick(Dt);
-	ABullyCombatPawn* P = Cast<ABullyCombatPawn>(GetPawn());
-	UBullyCombatComponent* C = P ? P->GetCombat() : nullptr;
+	// Any ABullyCharacter fights (ai-npc "fight anybody": brawling ambient walkers possess this controller too);
+	// ABullyCombatPawn adds the tutorial gates and the tether on top.
+	ABullyCharacter* Char = Cast<ABullyCharacter>(GetPawn());
+	ABullyCombatPawn* P = Cast<ABullyCombatPawn>(Char);
+	UBullyCombatComponent* C = Char ? Char->GetCombat() : nullptr;
 	UWorld* W = GetWorld();
 	if (!C || !W) { return; }
 	const double Now = W->GetTimeSeconds();
@@ -62,10 +65,10 @@ void ABullyCombatAIController::Tick(float Dt)
 		return;
 	}
 	const UMissionSubsystem* MS = UMissionSubsystem::Get(W);
-	const bool bMayAttack = P->bAttackAllowed && !(MS && MS->HasFlag(TEXT("combat_ai_passive")));
-	const bool bMayBlock = P->bBlockAllowed && !(MS && MS->HasFlag(TEXT("combat_ai_noblock")));
+	const bool bMayAttack = (!P || P->bAttackAllowed) && !(MS && MS->HasFlag(TEXT("combat_ai_passive")));
+	const bool bMayBlock = (!P || P->bBlockAllowed) && !(MS && MS->HasFlag(TEXT("combat_ai_noblock")));
 
-	const FVector Me = P->GetActorLocation();
+	const FVector Me = Char->GetActorLocation();
 	const FVector Them = T->GetOwner()->GetActorLocation();
 	const float D = FVector::Dist2D(Me, Them);
 	if (!bEngaged && D < RunDistance)
@@ -97,7 +100,7 @@ void ABullyCombatAIController::Tick(float Dt)
 		return;   // swinging / reacting / held: the component owns the body
 	}
 	C->SetLockOnHeld(D < RunDistance);
-	P->SetScriptedGait(D > RunDistance ? EBullyGait::Run : EBullyGait::Walk);
+	Char->SetScriptedGait(D > RunDistance ? EBullyGait::Run : EBullyGait::Walk);
 
 	// attack
 	if (bMayAttack && !bBlockNow && Now >= NextAttackAt && D <= AttackRange && !T->IsDown() && Now >= RetreatUntil
@@ -116,7 +119,7 @@ void ABullyCombatAIController::Tick(float Dt)
 
 	// movement: tether, retreat, approach, circle
 	FVector Dir = FVector::ZeroVector;
-	if (P->bHasTether && FVector::Dist2D(Me, P->TetherCenter) > P->TetherRadius)
+	if (P && P->bHasTether && FVector::Dist2D(Me, P->TetherCenter) > P->TetherRadius)
 	{
 		Dir = (P->TetherCenter - Me).GetSafeNormal2D();
 	}
@@ -143,6 +146,6 @@ void ABullyCombatAIController::Tick(float Dt)
 	}
 	if (!Dir.IsNearlyZero())
 	{
-		P->AddMovementInput(Dir, 1.f);
+		Char->AddMovementInput(Dir, 1.f);
 	}
 }

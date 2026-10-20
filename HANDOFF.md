@@ -1,6 +1,58 @@
 # HANDOFF — bully-remake
 
-**Updated:** 2026-10-18 · **Branch:** `phase0` (= `origin/main`; checkout `~/bully-remake`) · **Machine:** midirstudio (M3 Ultra Mac Studio)
+**Updated:** 2026-10-19 · **Branch:** `phase0` (= `origin/main`; checkout `~/bully-remake`) · **Machine:** midirstudio (M3 Ultra Mac Studio)
+
+## ai-npc (MERGED to `main` 2026-10-19 with owner approval, plus fight-anybody + voice input; worktree `~/bully-remake-wt/ai-npc` on the Studio)
+
+Talk to any NPC, LLM-driven, with per-NPC long-term memory and (pending credit) Fish Audio voices. Design header: `Source/BullyRemake/NPCChatSubsystem.h`; config `Config/NPCChat.json` (12 personas: GN_Bully01–05 Davis/Wade/Tom/Troy/Trent + ambient boy01/boy02/asiangirl/greekboy/nerd_bucky/prefect_seth + `*`).
+
+- **Verified** (smoke4, `~/bully-remake-evidence/ai-npc/smoke4`, headless nullrhi): T-equivalent toggle opened a chat with walker `asiangirl` as Karen, real MiniMax reply in ~5 s in character, close fired the memory summarization, `Saved/NPCChat/asiangirl.json` landed with 10 first-person facts. `BR_NPCCHAT SMOKE OK`. Smoke harness: `BR_EXTRA_ARGS=-BRNPCChatSmoke tools/ue/run_walk_nullrhi.sh --script tools/ue/walk_npcchat_smoke.json --out <dir>` (smoke runs on wall clock and quits the engine itself).
+- LLM: MiniMax `MiniMax-M2.7-highspeed` via api key file `~/.claude/secrets/npc-llm.key` (both machines). Reasoning `<think>` blocks are stripped; any OpenAI-compatible endpoint swaps in via config (local MLX server later).
+- TTS: Fish Audio wired (`~/.claude/secrets/fish-audio.key`), **blocked on API credit = $0** (owner topping up at fish.audio/app/developers; API credit ≠ platform credit). All `voice` ids empty pending owner's voice picks; empty voice = silent subtitles by design.
+- Not yet done: owner playtest with the interactive panel (type to NPCs in a real -game run), voice ids per ped, gestures on reply, mic input (whisper) later.
+- Worktree Content/ is an APFS clone of the main checkout's imported content (regenerable, disposable).
+
+## Map unlock + teleport (2026-10-19, Phase 1 of owner's "all map playable" ask)
+
+Owner wants the whole world playable + unlocked, teleportable by a button, plus weapons & vehicles (real game rips kept
+git-ignored; original code in-repo). Sequencing: town -> other areas -> teleport -> weapons -> vehicles.
+
+- **Town imported & verified.** Importer gained `town`/`all` presets (`tools/importers/world.py`): `town` = academy +
+  8 outdoor districts (business strip, Old Bullworth Vale, New Coventry, carnival, junkyard, BMX park, go-kart track,
+  tGlobal); `all` adds ~27 interiors. `world --preset town` -> 30 scenes / 3,734 placements, 0 failures; `run_import.sh
+  --scenes all` -> 1,694 meshes (0 failed, 7,835 collision slots bound), 3,604 placements placed, 0 errors. Geometry +
+  collision + Lumen all came through (evidence: `~/bully-remake-evidence/town/` district + aerial shots).
+- **Teleport menu.** Press **G** in-game -> Slate list of every area (all unlocked), click to warp, floor-snapped on
+  arrival (`SBullyTeleportMenu` in `BullyPlayerController.cpp`, bound in `SetupInputComponent`; shares the settings-menu
+  input envelope). Spots auto-generated for every imported scene by `tools/ue/gen_teleport_spots.py` (median XY, min z)
+  into `Config/InteriorSpots.json` -> re-run after any world re-import. The old number-row 1..0 quick-teleport still works.
+- **Interiors** imported too (57 scenes / 5,578 placements); the G-menu lists all 50 areas (8 outdoor + 42 rooms).
+
+## Town sandbox + weapons + vehicles (2026-10-19, owner milestone: "play in the town, show the new stuff")
+
+All original code; placeholder visuals (engine primitives) with a `mesh` path per weapon/ride for local models.
+Game models are NOT extracted by the agent — drop your own into those paths.
+
+- **Town sandbox start** (`UBullySandboxSubsystem`, `Config/Sandbox.json`): on a normal launch/PIE you start in the town
+  on an open, flat street patch it finds automatically (rejects buildings, roofs, water), facing a lineup of rides, all
+  weapons unlocked. Off for mission boots and any `-BR*` harness run; `-BRSandbox[=spot]` forces it, `-BRNoSandbox`
+  disables it. If the town isn't imported on a machine it parks the rides next to you instead of dropping you in the void.
+- **Weapons** (`UBullyWeaponComponent` + `ABullyProjectile`, `Config/Weapons.json`): slingshot, spud gun, bottle rockets,
+  eggs, stink bomb, firecrackers, marbles, itching powder. Mouse wheel / D-pad cycles (Fists = melee), LMB fires, RMB
+  lock-on aims. Hits go through `UBullyCombatComponent::ApplyWeaponHit`; effects: knockback, slip, gas cloud, burn, itch.
+  HUD legend shows weapon + ammo; console `BRGiveWeapons`.
+- **Vehicles** (`ABullyVehicle`, `Config/Vehicles.json`): bike, skateboard, go-kart, car — arcade handling written here
+  (no Chaos plugin): throttle/brake/reverse/coast, speed-scaled steering, slope/kerb following, wall sliding, knocks
+  pedestrians over, chase cam with mouse look. E near a ride to get on/off; W/S A/D, Space handbrake. G-menu while
+  riding hops you off first. Console `BRSpawnVehicle <bike|skateboard|gokart|car>`.
+- **Verified headless:** `tools/ue/run_smoke_nullrhi.sh --flag -BRWeaponSmoke` -> PASS 8/8 weapons hit;
+  `--flag -BRSandboxSmoke` -> PASS 19/19 (town start, 4 rides, each accelerates/brakes/steers/mount/dismount, run-over).
+- **To play it on the laptop:** pull main, rebuild, and (once) import the whole world locally:
+  `python3 -m tools.importers world --preset all` then `tools/ue/run_import.sh --scenes all`. Then PIE -> you're in town.
+- **Owner playtest asks (feel, not correctness):** handling of each ride (numbers in `Vehicles.json`), weapon punch /
+  fire rates (`Weapons.json`), whether the auto-picked town start spot is a nice one (else set `start` in Sandbox.json or
+  tune `search_radius_cm`), and streamed-town perf on the M5. Known gaps: no throw/shoot animation yet (the arm doesn't
+  move), no projectile VFX/SFX, rides are primitives until you set mesh paths, NPC traffic/pedestrians in town = none yet.
 
 ## Verified state
 
