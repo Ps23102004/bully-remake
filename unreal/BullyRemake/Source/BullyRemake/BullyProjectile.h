@@ -1,8 +1,9 @@
 // OWNER: slice-weapons
-// Original projectile for the weapon system. A sphere-collided, physics-moved actor configured at spawn by
-// UBullyWeaponComponent from Config/Weapons.json. On impact (or fuse end) it detonates: applies a reaction + damage to
-// the combat component it hits, or to every fighter inside an AoE radius, and tags a status effect. No game assets:
-// the visual is an optional local mesh (set via SetMesh) or nothing.
+// Projectile for the weapon system. A sphere-collided, physics-moved actor configured at launch by
+// UBullyWeaponComponent from Config/Weapons.json. On impact (or when its fuse runs out) it detonates: applies a
+// reaction + damage to the fighter it hit, or to every fighter inside an AoE radius, then runs the weapon's status
+// effect (knockback, slip, lingering gas, burn, itch/stun ticks). Visual: an optional local mesh, else an engine
+// primitive sphere sized to the collision radius.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -13,25 +14,26 @@
 class USphereComponent;
 class UProjectileMovementComponent;
 class UStaticMeshComponent;
+class UStaticMesh;
 
-UENUM()
 enum class EBullyWeaponEffect : uint8 { None, Stun, Gas, Slip, Fire, Knockback };
 
-USTRUCT()
 struct FBullyProjectileSpec
 {
-	GENERATED_BODY()
-
-	float Speed = 4000.f;          // cm/s along the fire direction
+	FName WeaponId;
+	float Speed = 4000.f;          // cm/s (ranged: along the aim; thrown: fallback when there is no arc target)
 	float GravityScale = 1.f;      // 0 = flat shot, 1 = full lob
 	float Radius = 8.f;            // collision sphere (cm)
-	float Lifetime = 5.f;          // fuse (s) if it hits nothing
+	float Lifetime = 5.f;          // fuse (s): detonates where it is if it hits nothing
 	float Damage = 5.f;
 	EBullyHitReaction Reaction = EBullyHitReaction::Flinch;
-	float AoeRadius = 0.f;         // >0 = detonate as an area blast
+	float AoeRadius = 0.f;         // >0 = area blast
 	EBullyWeaponEffect Effect = EBullyWeaponEffect::None;
 	float EffectSeconds = 0.f;
-	FName WeaponId;
+
+	static EBullyHitReaction ParseReaction(const FString& S);
+	static EBullyWeaponEffect ParseEffect(const FString& S);
+	static const TCHAR* EffectName(EBullyWeaponEffect E);
 };
 
 UCLASS()
@@ -42,23 +44,28 @@ class ABullyProjectile : public AActor
 public:
 	ABullyProjectile();
 
-	/** Launch from Origin along Dir (unit). Instigator's own combat component is spared. */
-	void Launch(const FBullyProjectileSpec& InSpec, const FVector& Origin, const FVector& Dir, UBullyCombatComponent* FiredBy);
-	/** Optional local (git-ignored) visual mesh; no-op if null. */
-	void SetMesh(UStaticMesh* Mesh);
+	/** Launch from Origin with an explicit Velocity (cm/s). The shooter's own fighter is never hit. */
+	void Launch(const FBullyProjectileSpec& InSpec, const FVector& Origin, const FVector& Velocity, UBullyCombatComponent* FiredBy);
+	/** Visual: a local mesh if given, else the engine sphere scaled to the collision radius. */
+	void SetVisual(UStaticMesh* Mesh, bool bIsFallbackSphere);
+
+	// evidence counters (headless smoke reads these)
+	static int32 TotalDetonations;
+	static int32 TotalFighterHits;
+	static int32 TotalEffectTicks;
 
 protected:
 	UFUNCTION()
 	void OnHit(UPrimitiveComponent* HitComp, AActor* Other, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
-
-	virtual void BeginPlay() override;
+	virtual void LifeSpanExpired() override;
 
 private:
 	void Detonate(const FVector& At, UBullyCombatComponent* DirectHit);
+	void ApplyEffect(const FVector& At, const TArray<TWeakObjectPtr<UBullyCombatComponent>>& Victims);
 
-	UPROPERTY() USphereComponent* Collision = nullptr;
-	UPROPERTY() UProjectileMovementComponent* Movement = nullptr;
-	UPROPERTY() UStaticMeshComponent* MeshComp = nullptr;
+	UPROPERTY() TObjectPtr<USphereComponent> Collision;
+	UPROPERTY() TObjectPtr<UProjectileMovementComponent> Movement;
+	UPROPERTY() TObjectPtr<UStaticMeshComponent> MeshComp;
 
 	FBullyProjectileSpec Spec;
 	TWeakObjectPtr<UBullyCombatComponent> Shooter;

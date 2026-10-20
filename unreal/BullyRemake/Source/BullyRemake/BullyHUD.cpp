@@ -1,6 +1,7 @@
 // OWNER: mission-fw
 #include "BullyHUD.h"
 
+#include "BullyWeaponComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
@@ -291,7 +292,19 @@ public:
 						+ SVerticalBox::Slot().AutoHeight().Padding(0, 3, 0, 0)
 						[
 							SNew(STextBlock).Font(Small).ColorAndOpacity(Dim)
-							.Text(FText::FromString(TEXT("ATTACK LMB    BLOCK hold Q    GRAPPLE F    LOCK-ON hold RMB")))
+							.Text(FText::FromString(TEXT("ATTACK/FIRE LMB    BLOCK hold Q    GRAPPLE F    LOCK-ON hold RMB    WEAPON wheel")))
+						]
+						+ SVerticalBox::Slot().AutoHeight().Padding(0, 3, 0, 0)
+						[
+							SNew(STextBlock).Font(Small).ColorAndOpacity(Dim)
+							.Text(FText::FromString(TEXT("TELEPORT G    TALK T")))
+						]
+						// equipped weapon + ammo (slice-weapons)
+						+ SVerticalBox::Slot().AutoHeight().Padding(0, 5, 0, 0)
+						[
+							SNew(STextBlock).Font(Small).ColorAndOpacity(Gold)
+							.Visibility_Lambda([]() { return UBullyWeaponComponent::HudLine().IsEmpty() ? EVisibility::Collapsed : EVisibility::HitTestInvisible; })
+							.Text_Lambda([]() { return FText::FromString(UBullyWeaponComponent::HudLine()); })
 						]
 					]
 				]
