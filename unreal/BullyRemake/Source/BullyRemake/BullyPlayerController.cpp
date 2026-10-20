@@ -2,6 +2,7 @@
 #include "BullyPlayerController.h"
 
 #include "BullyCharacter.h"
+#include "BullyVehicle.h"
 #include "Containers/Ticker.h"
 #include "NPCChatSubsystem.h"
 #include "Engine/Engine.h"
@@ -219,6 +220,7 @@ public:
 				{
 					if (PC.IsValid())
 					{
+						if (ABullyVehicle* Ride = Cast<ABullyVehicle>(PC->GetPawn())) { Ride->Dismount(); }   // hop off first
 						if (ABullyCharacter* C = Cast<ABullyCharacter>(PC->GetPawn())) { C->BRGo(K); }
 						PC->CloseTeleportMenu();
 					}

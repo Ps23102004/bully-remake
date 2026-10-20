@@ -5,6 +5,7 @@
 #include "BullyCombatAnimInstance.h"
 #include "BullyCombatComponent.h"
 #include "BullyWeaponComponent.h"
+#include "BullyVehicle.h"
 #include "Camera/CameraComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/CapsuleComponent.h"
@@ -743,6 +744,12 @@ void ABullyCharacter::OnWeaponPrev(const FInputActionValue& Value)
 void ABullyCharacter::BRGiveWeapons()
 {
 	if (Weapons) { Weapons->RefillAll(); }
+}
+
+void ABullyCharacter::BRSpawnVehicle(const FString& Id)
+{
+	const FVector Fwd = FRotator(0.f, GetActorRotation().Yaw, 0.f).Vector();
+	ABullyVehicle::SpawnVehicle(GetWorld(), FName(*Id), GetActorLocation() + Fwd * 450.f, GetActorRotation().Yaw);
 }
 
 void ABullyCharacter::OnGrapple(const FInputActionValue& Value)

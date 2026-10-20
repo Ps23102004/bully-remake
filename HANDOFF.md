@@ -26,9 +26,33 @@ git-ignored; original code in-repo). Sequencing: town -> other areas -> teleport
   arrival (`SBullyTeleportMenu` in `BullyPlayerController.cpp`, bound in `SetupInputComponent`; shares the settings-menu
   input envelope). Spots auto-generated for every imported scene by `tools/ue/gen_teleport_spots.py` (median XY, min z)
   into `Config/InteriorSpots.json` -> re-run after any world re-import. The old number-row 1..0 quick-teleport still works.
-- **Next:** Phase 2 = the ~27 interiors (`world --preset all` + `run_import.sh`); then weapons (full arsenal) and
-  vehicles (bike/skateboard/go-kart, fully driveable). **Owner playtest asks** (feel, not correctness): drive feel of each
-  vehicle, weapon punch, and a roam through the streamed town for perf once it's all in.
+- **Interiors** imported too (57 scenes / 5,578 placements); the G-menu lists all 50 areas (8 outdoor + 42 rooms).
+
+## Town sandbox + weapons + vehicles (2026-10-19, owner milestone: "play in the town, show the new stuff")
+
+All original code; placeholder visuals (engine primitives) with a `mesh` path per weapon/ride for local models.
+Game models are NOT extracted by the agent — drop your own into those paths.
+
+- **Town sandbox start** (`UBullySandboxSubsystem`, `Config/Sandbox.json`): on a normal launch/PIE you start in the town
+  on an open, flat street patch it finds automatically (rejects buildings, roofs, water), facing a lineup of rides, all
+  weapons unlocked. Off for mission boots and any `-BR*` harness run; `-BRSandbox[=spot]` forces it, `-BRNoSandbox`
+  disables it. If the town isn't imported on a machine it parks the rides next to you instead of dropping you in the void.
+- **Weapons** (`UBullyWeaponComponent` + `ABullyProjectile`, `Config/Weapons.json`): slingshot, spud gun, bottle rockets,
+  eggs, stink bomb, firecrackers, marbles, itching powder. Mouse wheel / D-pad cycles (Fists = melee), LMB fires, RMB
+  lock-on aims. Hits go through `UBullyCombatComponent::ApplyWeaponHit`; effects: knockback, slip, gas cloud, burn, itch.
+  HUD legend shows weapon + ammo; console `BRGiveWeapons`.
+- **Vehicles** (`ABullyVehicle`, `Config/Vehicles.json`): bike, skateboard, go-kart, car — arcade handling written here
+  (no Chaos plugin): throttle/brake/reverse/coast, speed-scaled steering, slope/kerb following, wall sliding, knocks
+  pedestrians over, chase cam with mouse look. E near a ride to get on/off; W/S A/D, Space handbrake. G-menu while
+  riding hops you off first. Console `BRSpawnVehicle <bike|skateboard|gokart|car>`.
+- **Verified headless:** `tools/ue/run_smoke_nullrhi.sh --flag -BRWeaponSmoke` -> PASS 8/8 weapons hit;
+  `--flag -BRSandboxSmoke` -> PASS 19/19 (town start, 4 rides, each accelerates/brakes/steers/mount/dismount, run-over).
+- **To play it on the laptop:** pull main, rebuild, and (once) import the whole world locally:
+  `python3 -m tools.importers world --preset all` then `tools/ue/run_import.sh --scenes all`. Then PIE -> you're in town.
+- **Owner playtest asks (feel, not correctness):** handling of each ride (numbers in `Vehicles.json`), weapon punch /
+  fire rates (`Weapons.json`), whether the auto-picked town start spot is a nice one (else set `start` in Sandbox.json or
+  tune `search_radius_cm`), and streamed-town perf on the M5. Known gaps: no throw/shoot animation yet (the arm doesn't
+  move), no projectile VFX/SFX, rides are primitives until you set mesh paths, NPC traffic/pedestrians in town = none yet.
 
 ## Verified state
 

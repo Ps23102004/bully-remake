@@ -243,6 +243,8 @@ public:
 	UFUNCTION(Exec) void BRGo(const FString& Name);
 	/** Console: refill every weapon to max ammo. */
 	UFUNCTION(Exec) void BRGiveWeapons();
+	/** Console: spawn a ride (bike / skateboard / gokart / car, Config/Vehicles.json) a few metres ahead. */
+	UFUNCTION(Exec) void BRSpawnVehicle(const FString& Id);
 private:
 
 	EBullyGait Gait = EBullyGait::Run;
