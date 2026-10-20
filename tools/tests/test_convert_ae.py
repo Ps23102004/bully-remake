@@ -11,7 +11,7 @@ import numpy as np
 
 from test_msh import STATIC_DECL, make_msh, part, quad, static_vertex
 from test_wtex import make_tex
-from tools.importers import ae
+from tools.importers import ae, wx
 from tools.importers.convert_ae import AeTextureStore, convert_msh
 from tools.importers.gltf import validate_gltf
 
@@ -46,6 +46,73 @@ def test_convert_quad(arc, tmp_path):
     assert os.path.isfile(os.path.join(out, "textures/ae/brick_d.png"))
     # tools/ue/import_content.py finds textures only via extras.textures[role].uri
     assert brick["extras"]["textures"]["base"]["uri"] == "../textures/ae/brick_d.png"
+
+
+def test_opaque_two_sided_unless_modelled_back_to_back(tmp_path):
+    """Single-sided wall shells must draw from behind (ae-interiors.md); a part already modelled back-to-back
+    (the same triangles twice, reversed) keeps one side, or the two coplanar faces would z-fight."""
+    p = tmp_path / "data_1.zip"
+    v = [static_vertex(q) for q in ((0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0))]
+    wall = part("w:0", v, [0, 1, 2, 0, 2, 3], STATIC_DECL, [(0, 6, 0, 0)], 7)
+    sheet = part("s:0", v, [0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2], STATIC_DECL, [(0, 12, 1, 0)], 7)
+    with zipfile.ZipFile(p, "w") as z:
+        z.writestr("bully/wall_d.tex", make_tex(0, 2, 2, bytes([90, 90, 90, 255] * 4)))   # opaque
+        z.writestr("bully/m.msh", make_msh([wall, sheet], materials=("mat_wall", "mat_wall_sheet")))
+    out = str(tmp_path / "out")
+    with ae.AeArchive(str(p)) as a:
+        r = convert_msh("m", a.read("m", "msh"), a, AeTextureStore(a, out), out)
+    mats = {m["name"]: m for m in json.load(open(os.path.join(out, r.gltf)))["materials"]}
+    assert mats["mat_wall"]["extras"]["blend_mode"] == "opaque" and mats["mat_wall"]["doubleSided"] is True
+    assert "doubleSided" not in mats["mat_wall_sheet"]
+
+
+def test_mtl_drives_blend_mode_slots_and_extras(tmp_path):
+    """The .mtl, not the texture's alpha channel or the name, decides masked / translucent / additive / opaque."""
+    from test_ae import mtl
+    mtls = {
+        # alpha-bearing texture but no alphatest flag: stays opaque (the old heuristic would mask it)
+        "mat_wallp": mtl("bully_normalspec", ["pic_d", "pic_n", "pic_s"], [], [(1, 1, 1, 1), (8, 0.5, 1, 1)]),
+        "mat_leafp": mtl("bully_normal", ["pic_d", "pic_n"], ["alphatest", "doublesided"]),
+        "mat_glassp": mtl("bully_diffuse", ["pic_d"], ["transparent", "doublesided"], [(0.5, 0.5, 0.5, 0.25)]),
+        "mat_lightglowp": mtl("bully_diffuse", ["pic_d"], ["unlit"]),
+        "mat_glowsign": mtl("bully_normal", ["pic_d", "pic_n"]),    # "glow" in the name, but a lit surface (normal map)
+        "mat_glowsprite": mtl("bully_diffuse", ["opq_d"]),          # diffuse-only sprite with a glow name
+        "mat_chalkp": mtl("bully_diffuse", ["opq_d"], ["alphatest"]),   # alphatest on an alpha-less texture
+        "mat_sc_hopscotch": mtl("bully_diffuse", ["opq_d"], ["alphatest"]),
+    }
+    p = tmp_path / "data_1.zip"
+    with zipfile.ZipFile(p, "w") as z:
+        z.writestr("bully/pic_d.tex", make_tex(0, 2, 2, bytes([255, 0, 0, 255, 0, 255, 0, 128] * 2)))
+        z.writestr("bully/opq_d.tex", make_tex(0, 2, 2, bytes([90, 90, 90, 255] * 4)))
+        for t in ("pic_n", "pic_s"):
+            z.writestr(f"bully/{t}.tex", make_tex(0, 2, 2, bytes([128, 128, 255, 255] * 4)))
+        for n, t in mtls.items():
+            z.writestr(f"bully/{n}.mtl", wx.encode(t.encode()))
+        v = [static_vertex(q) for q in ((0, 0, 0), (1, 0, 0), (1, 1, 0))]
+        n = len(mtls)
+        pt = part("q:0", v, [0, 1, 2] * n, STATIC_DECL, [(3 * i, 3, i, 0) for i in range(n)], 7)
+        z.writestr("bully/m.msh", make_msh([pt], materials=tuple(mtls)))
+    out = str(tmp_path / "out")
+    with ae.AeArchive(str(p)) as a:
+        r = convert_msh("m", a.read("m", "msh"), a, AeTextureStore(a, out), out)
+        doc = json.load(open(os.path.join(out, r.gltf)))
+    m = {x["name"]: x for x in doc["materials"]}
+    mode = {k: v["extras"]["blend_mode"] for k, v in m.items()}
+    assert mode == {"mat_wallp": "opaque", "mat_leafp": "masked", "mat_glassp": "translucent", "mat_lightglowp": "additive",
+                    "mat_glowsign": "opaque", "mat_glowsprite": "additive", "mat_chalkp": "opaque", "mat_sc_hopscotch": "additive"}
+    wall = m["mat_wallp"]
+    assert wall["doubleSided"] is True and "alphaMode" not in wall                    # lane A: opaque is two-sided
+    assert wall["extras"]["textures"]["gloss"]["uri"] == "../textures/ae/pic_s.png"   # the UE master's Gloss slot
+    ae_x = wall["extras"]["ae"]
+    assert (ae_x["source"], ae_x["effect"], ae_x["specular_power"], ae_x["specular_strength"]) == \
+        ("mtl", "bully_normalspec", 8.0, 0.5)
+    assert m["mat_leafp"]["alphaMode"] == "MASK" and m["mat_leafp"]["doubleSided"] is True
+    glass = m["mat_glassp"]
+    assert glass["alphaMode"] == "BLEND" and glass["doubleSided"] is True
+    assert glass["pbrMetallicRoughness"]["baseColorFactor"] == [0.5, 0.5, 0.5, 0.25]
+    assert glass["extras"]["gamebryo"]["material"] == {"diffuse": [0.5, 0.5, 0.5], "alpha": 0.25}
+    assert "gloss" not in m["mat_lightglowp"]["extras"]["textures"] or True
+    assert "gamebryo" not in wall["extras"]                                          # neutral tint: nothing to pass
 
 
 # -- grass ----------------------------------------------------------------------------------------

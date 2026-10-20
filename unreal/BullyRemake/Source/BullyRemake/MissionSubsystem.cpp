@@ -6,6 +6,7 @@
 #include "BullyCombatPawn.h"
 #include "BullyCombatTest.h"
 #include "BullyHUD.h"
+#include "BullyRagdollComponent.h"
 #include "BullyProgressSubsystem.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -392,6 +393,13 @@ void UMissionSubsystem::TeleportPlayer(const FVector& Loc, float Yaw, bool bSetY
 {
 	APawn* Pawn = GetPlayerPawn();
 	if (!Pawn) { return; }
+	if (ABullyCharacter* BC = Cast<ABullyCharacter>(Pawn))
+	{
+		// a ragdolled / knocked-out Jimmy: drop the body first (its tick would drag the capsule back), and a KO is over once the mission moves him
+		if (UBullyRagdollComponent* RD = BC->GetRagdoll()) { RD->Abort(); }
+		if (UBullyCombatComponent* CC = BC->GetCombat()) { if (CC->IsOut()) { CC->ResetFighter(); } }
+		BC->LastEntryDoor.Reset();
+	}
 	Pawn->SetActorLocation(Loc, false, nullptr, ETeleportType::TeleportPhysics);
 	if (ACharacter* C = Cast<ACharacter>(Pawn))
 	{

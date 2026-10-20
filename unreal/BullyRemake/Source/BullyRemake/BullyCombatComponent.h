@@ -123,7 +123,10 @@ public:
 	/** External hit from a weapon/projectile or the environment (no attacker): applies Damage + Reaction, unblockable
 	 *  (a thrown bottle still lands on a guarding target). Goes through the normal victim path, so camera shake, KO,
 	 *  mission events and the health floor all behave as with a melee hit. */
-	void ApplyWeaponHit(EBullyHitReaction Reaction, float Damage);
+	void ApplyWeaponHit(EBullyHitReaction Reaction, float Damage, const FVector& Launch = FVector::ZeroVector);
+	/** lane-C: a Stagger finisher (Jab3, grapple strike C) thrown by the player at a student/NPC (not the tutorial sparring pawn) outside a mission is promoted to a
+	 *  Knockdown (which the ragdoll turns into a visible launch). Inside a running mission the authored reaction is kept. */
+	UPROPERTY(Config, EditAnywhere, Category = "Combat|React") bool bFinisherKnocksDownOutsideMissions = true;
 
 	// --- tuning (Config) ----------------------------------------------------------------------------------
 	UPROPERTY(Config, EditAnywhere, Category = "Combat|Health") float PlayerMaxHealth = 100.f;
@@ -173,6 +176,10 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Combat|React") float DownedTime = 2.2f;
 	UPROPERTY(Config, EditAnywhere, Category = "Combat|React") float DownedHitExtend = 0.6f;
 	UPROPERTY(Config, EditAnywhere, Category = "Combat|React") float GetUpTime = 0.87f;
+	/** Jimmy (the player team) is never out for good: this long after a KO he gets up again (once a ragdoll body has settled) with
+	 *  PlayerKOHealthFraction of his health. 0 = stay down (a mission fail / retry resets him instead). Students and bullies stay down. */
+	UPROPERTY(Config, EditAnywhere, Category = "Combat|React") float PlayerKOGetUpSeconds = 4.5f;
+	UPROPERTY(Config, EditAnywhere, Category = "Combat|React") float PlayerKOHealthFraction = 0.5f;
 	/** Consecutive flinches inside ComboResetTime before the victim is pushed out of range (stagger). 0 = never. */
 	UPROPERTY(Config, EditAnywhere, Category = "Combat|React") int32 FlinchesBeforeStagger = 4;
 	UPROPERTY(Config, EditAnywhere, Category = "Combat|React") float ComboResetTime = 1.2f;
@@ -295,6 +302,11 @@ private:
 	void FaceToward(const FVector& Where, float MaxStepDeg);
 	void Push(const FVector& Dir, float Distance, float Time);
 	void StartHitStop(float Seconds);
+	/** lane-C: throw the body with the ragdoll component when the reaction asks for it. */
+	bool TryRagdoll(EBullyHitReaction R, const FVector& Away, float Knock);
+	/** The body may stand up: false while a ragdoll is still tumbling; otherwise any ragdoll is recovered and OutClip is the get-up clip to play. */
+	bool RecoverRagdoll(FName& OutClip);
+	void BeginGetUp(FName Clip);
 	/** Kick the player's follow camera when Jimmy is in a hit (no-op for non-player fighters / no ABullyCharacter). */
 	void ShakePlayerCamera(float Amplitude);
 	void Fire(FName Event);
@@ -336,6 +348,7 @@ private:
 	float PoseRate = 1.f;
 	bool bPoseActive = false;
 
+	FVector PendingLaunch = FVector::ZeroVector;   // ApplyWeaponHit(.., Launch): consumed by the reaction it triggers
 	FVector PushVelocity = FVector::ZeroVector;
 	float PushTimeLeft = 0.f;
 	double HitStopUntil = -1.0;

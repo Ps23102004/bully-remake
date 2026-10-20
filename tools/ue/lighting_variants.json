@@ -4,9 +4,9 @@
  "default_variant": "B_raking_amber",
  "interior": {
   "scene_prefixes": [
-   "isc_",
-   "ischool"
+   "i"
   ],
+  "_scene_prefixes_note": "every interior scene name starts with i (ischool, isc_*, the town interiors igrocery, iasylum, ...); outdoor scenes start with t or zone_",
   "key_lux": 14000,
   "key_pitch_deg": -62,
   "key_yaw_deg": 215,

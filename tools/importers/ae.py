@@ -5,8 +5,9 @@ The AE keeps its models/textures in `data_1.zip` under `bully/` (flat, lowercase
 `.msh` models, `.tex` textures, `.mtl` materials). The zip is opened read-only and its
 contents are treated as untrusted data: nothing is extracted to disk or executed here.
 
-Format reference and measured rules: docs/re-notes/ae-materials.md. Seasonal variants ("_wi", "_in_grass0N" are
-snow) and the per-material corrections in MATERIAL_FIXES: docs/re-notes/ae-materials.md, ae-grass.md.
+Format reference and measured rules: docs/re-notes/ae-materials.md. A material's textures, effect and flags are read
+from its decoded `.mtl` (wx.py); the name heuristic below is only the fallback for a material without one (none in the
+shipped archive). Seasonal variants ("_wi", "_in_grass0N" are snow): docs/re-notes/ae-materials.md, ae-grass.md.
 
 Archive path, in order: explicit argument (--ae-data), $BULLY_AE_DATA,
 tools/importers/local_config.json key "ae_data", then autodetect of the stock
@@ -17,10 +18,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import struct
 import zipfile
 import zlib
 
+from . import wx
 from .binreader import FormatError
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -195,58 +198,6 @@ def _winter(stem: str) -> bool:
     return stem.endswith(WINTER_SUFFIXES)
 
 
-# Per-material corrections, keyed by lowercase material-name PREFIX (matched on "_" boundaries, so
-# "mat_sc28_tile_01" also covers "mat_sc28_tile_01_first_floor01"). Each entry: role -> texture stem,
-# "force" (replace a diffuse that did resolve) and the evidence. A stem that is not in the archive is
-# ignored. Evidence "art-match" = the material's own .n/.s map correlates with that diffuse's luminance
-# or relief at |r| >= 0.8 (the maps were baked from the same art); "sibling" = same prop/family,
-# chosen by eye; "name" = the stem is the obvious spelling of the material name. INFERRED, not read
-# from the encrypted .mtl.
-MATERIAL_FIXES = {
-    # missing diffuse (the 16 academy models that used to render white)
-    "mat_psc_bio_brain": {"diffuse": "sc22_brain_d", "kind": "art-match", "evidence": "psc_bio_brain_s r=0.95, _n relief r=0.83"},
-    "mat_pr00_drainp": {"diffuse": "pr_drainp_swap_d", "kind": "art-match", "evidence": "pr00_drainp_s r=0.91"},
-    "mat_sc_bathrtile01": {"diffuse": "bdormsc06_floor_d", "kind": "art-match", "evidence": "sc_bathrtile01_s r=0.94"},
-    "mat_re01_sinkvalve2": {"diffuse": "sc29_sink_d", "kind": "art-match", "evidence": "re01_sinkvalve2_s r=0.87"},
-    "mat_sp_boxing_gloves": {"diffuse": "sp_boxing_g_r_d", "normal": "sp_boxing_g_r_n", "specular": "sp_boxing_g_r_s",
-                             "kind": "name", "evidence": "boxing gloves, red"},
-    "mat_mascot_head": {"diffuse": "mascot_head_brn_d", "specular": "mascot_head_brn_s", "kind": "name", "evidence": "mascot head, brown"},
-    "mat_sc22_skelet": {"diffuse": "psc_bio_skeleton_d", "kind": "sibling", "evidence": "classroom skeleton prop"},
-    "mat_re01_bookshelf": {"diffuse": "sc30_bshelf_d", "kind": "sibling", "evidence": "re01_bookshelf_n has the sc30_bshelf_n shelf layout"},
-    "mat_sc28_tile_01": {"diffuse": "schallfloor01z_d", "kind": "sibling", "evidence": "3x3 hall tile, same layout as sc28_tile_01_n"},
-    # winter/snow textures where the autumn one exists or can be matched
-    "mat_zrc_grasse_swap": {"diffuse": "rc_grasse_swap_d", "normal": "zrc_grasse_swap_n_in_grass04", "force": True, "kind": "winter",
-                            "evidence": "zrc_grasse_swap_d is snow; its normal correlates with rc_grasse_swap_d (r=0.40), not with it"},
-    "mat_zbu_cobroaddirt_swap": {"diffuse": "zbu_cobroaddirt_swap_d_in_grass04", "force": True, "kind": "winter",
-                                 "evidence": "zbu_cobroaddirt_swap_d is snow between the flagstones; the _in_grass04 diffuse is "
-                                             "the same flagstone layout (matches zbu_cobroaddirt_swap_n_in_grass02) without snow"},
-    "mat_zrc_mosspath_swap": {"diffuse": "fun_gravedirt1_d", "force": True,
-                              "kind": "art-match", "evidence": "zrc_mosspath_swap_s r=0.81; the _in_grass02 diffuse is snow"},
-}
-
-
-def _fix_for(name: str):
-    parts = name.split("_")
-    for i in range(len(parts), 1, -1):
-        k = "_".join(parts[:i])
-        if k in MATERIAL_FIXES:
-            return k, MATERIAL_FIXES[k]
-    return None, None
-
-
-def _apply_fix(name: str, res: dict, tex) -> dict:
-    key, fix = _fix_for(name)
-    if not fix or (res["diffuse"] and not fix.get("force")):
-        return res
-    out = dict(res)
-    for role in ROLES:
-        if role in fix and fix[role] in tex:
-            out[role] = fix[role]
-    if out["diffuse"] != res["diffuse"]:
-        out["rule"] = "fix:" + fix["kind"]
-    return out
-
-
 def _resolve(s: str, tex) -> dict:
     toks = s.split("_")
     partial = {}
@@ -284,18 +235,124 @@ def _resolve(s: str, tex) -> dict:
             "rule": "unresolved"}
 
 
-def resolve_material_textures(material_name: str, archive) -> dict:
-    """Map a material name to texture stems: {"diffuse","normal","specular","rule"}.
-
-    `archive` is an AeArchive (or anything with texture_names()). Stems are lowercase archive
-    names without ".tex"; a role with no texture is None. `rule` names the heuristic that
-    found the diffuse texture ("unresolved" if none; normal/specular may still be set).
-    Rules are tried per candidate base, longest first (trailing "_token"s dropped one at a time), so
-    the rule string is "<match>[+z-added|z-stripped][+drop-suffix]". MATERIAL_FIXES then replaces
-    or fills the roles it names (rule "fix:<evidence kind>").
-    """
+def _heuristic(material_name: str, archive) -> dict:
     tex = archive.texture_names()
     s = material_name.lower()
     if s.startswith("mat_"):
         s = s[4:]
-    return _apply_fix(material_name.lower(), _resolve(s, tex), tex)
+    return _resolve(s, tex)
+
+
+# ---------------------------------------------------------------------------
+# .mtl (Wx-decoded text): effect, texture slots, flags, vectors
+#
+#   {
+#   \teffect(effect)=bully_normalspec,
+#   \tdoublesided(bool)=true,                 optional: doublesided alphatest transparent unlit noshadows
+#   \ttextures(orderedarray<texture2d>)=[3,a_d,a_n,a_s],
+#   \tvectors(orderedarray<vector4>)=[2,{ x(float)=1.0000, y(float)=.. , z(float)=.. , w(float)=.. },{..}]
+#   }
+#
+# Slot order is fixed by the effect name (measured on all 6,542 files, docs/re-notes/ae-materials.md section 6).
+
+MTL_FLAGS = ("doublesided", "alphatest", "transparent", "unlit", "noshadows")
+_EFFECT_ROLES = {"bully_waterripple": ("diffuse", "normal"), "bully_watermain": ("diffuse", "normal"),
+                 "bully_radarmask": ("diffuse", "mask")}
+_RE_EFFECT = re.compile(r"^\s*effect\(effect\)=([^,\s]*)", re.M)
+_RE_TEX = re.compile(r"textures\(orderedarray<texture2d>\)=\[(\d+)((?:,[^,\]\s]*){0,16})\]")
+_RE_VEC = re.compile(r"\{\s*x\(float\)=([-\d.eE+]+),\s*y\(float\)=([-\d.eE+]+),\s*z\(float\)=([-\d.eE+]+),"
+                     r"\s*w\(float\)=([-\d.eE+]+)\s*\}")
+
+
+def effect_roles(effect: str, n_textures: int) -> tuple:
+    """Role of each texture slot for an effect: bully_<diffuse|spec|normal|normalspec>[uv|color] -> d [n] [s]."""
+    if effect in _EFFECT_ROLES:
+        roles = _EFFECT_ROLES[effect]
+    elif effect.startswith("bully_") and effect not in ("bully_comic", "bully_sky"):
+        e = effect[6:]
+        roles = ("diffuse",) + (("normal",) if "normal" in e else ()) + (("specular",) if "spec" in e else ())
+    else:
+        roles = ("diffuse",)
+    return roles[:n_textures] + ("extra",) * max(0, n_textures - len(roles))
+
+
+def parse_mtl(text: str) -> dict:
+    """{"effect", "flags": {name: bool}, "textures": [stem...], "vectors": [(x, y, z, w)...]}; ValueError if no effect."""
+    e = _RE_EFFECT.search(text)
+    if not e:
+        raise ValueError("no effect line")
+    t = _RE_TEX.search(text)
+    tex = [x.lower() for x in t.group(2).split(",")[1:]] if t else []
+    vec_part = text.split("vectors(", 1)[1] if "vectors(" in text else ""
+    return {"effect": e.group(1).lower(),
+            "flags": {f: bool(re.search(r"^\s*%s\(bool\)=true" % f, text, re.M)) for f in MTL_FLAGS},
+            "textures": tex,
+            "vectors": [tuple(float(x) for x in m.groups()) for m in _RE_VEC.finditer(vec_part)][:8]}
+
+
+def read_mtl(archive, material_name: str):
+    """Parsed .mtl of a material, or None when the archive has none (or it does not decode). Cached on the archive."""
+    cache = archive.__dict__.setdefault("_mtl_cache", {}) if hasattr(archive, "__dict__") else {}
+    key = material_name.lower()
+    if key not in cache:
+        mtl = None
+        if hasattr(archive, "find") and archive.find(material_name, "mtl"):
+            try:
+                mtl = parse_mtl(wx.decode_text(archive.read(material_name, "mtl")))
+            except (FormatError, ValueError):
+                mtl = None
+        cache[key] = mtl
+    return cache[key]
+
+
+def material_info(material_name: str, archive) -> dict:
+    """Everything the importer knows about a material.
+
+    {"diffuse","normal","specular","rule"} as resolve_material_textures, plus
+      "source"   "mtl" | "mtl+heuristic" (a slot's texture is not in the archive: heuristic fills that role) | "heuristic"
+      "effect"   the .mtl effect name (None for the heuristic)
+      "effect_roles"  role of each texture slot, e.g. ("diffuse", "normal", "specular")
+      "flags"    {doublesided, alphatest, transparent, unlit, noshadows}
+      "vectors"  the .mtl vector4 list; vectors[0] is a colour/opacity multiplier (w = opacity of transparent
+                 materials), vectors[1] of the spec effects is (specular power, specular strength), of the water
+                 effects a UV scroll rate (INFERRED from value ranges, ae-materials.md section 6)
+      "extra"    textures that fill no diffuse/normal/specular role (mask, ...)
+      "missing"  stems the .mtl names that are not in the archive (the heuristic may have filled the role)
+    The .mtl has no UV-tiling field: tiling is in the mesh UVs; the *uv effects scroll them at run time.
+    """
+    mtl = read_mtl(archive, material_name)
+    if mtl is None:
+        return {**_heuristic(material_name, archive), "source": "heuristic", "effect": None,
+                "flags": dict.fromkeys(MTL_FLAGS, False), "effect_roles": (), "vectors": [], "extra": [], "missing": []}
+    tex = archive.texture_names()
+    out = {"diffuse": None, "normal": None, "specular": None, "rule": "mtl"}
+    extra, missing, gone = [], [], []
+    for role, stem in zip(effect_roles(mtl["effect"], len(mtl["textures"])), mtl["textures"]):
+        if stem not in tex:
+            missing.append(role)
+            gone.append(stem)
+        elif role == "extra" or role == "mask":
+            extra.append(stem)
+        else:
+            out[role] = stem
+    source = "mtl"
+    if missing:
+        fill = _heuristic(material_name, archive)
+        for role in missing:
+            if role in out and fill.get(role):
+                out[role], source = fill[role], "mtl+heuristic"
+        out["rule"] = "mtl+" + fill["rule"] if source != "mtl" else "mtl"
+    return {**out, "source": source, "effect": mtl["effect"], "effect_roles": effect_roles(mtl["effect"], len(mtl["textures"])), "flags": mtl["flags"], "vectors": mtl["vectors"],
+            "extra": extra, "missing": gone}
+
+
+def resolve_material_textures(material_name: str, archive) -> dict:
+    """Map a material name to texture stems: {"diffuse","normal","specular","rule"}.
+
+    From the material's own .mtl when the archive has one (rule "mtl"), else the name heuristic: per candidate base,
+    longest first (trailing "_token"s dropped one at a time), so the rule string is
+    "<match>[+z-added|z-stripped][+drop-suffix]" ("unresolved" if no diffuse; normal/specular may still be set).
+    Stems are lowercase archive names without ".tex"; a role with no texture is None.
+    """
+    i = material_info(material_name, archive)
+    return {k: i[k] for k in ("diffuse", "normal", "specular", "rule")}

@@ -14,6 +14,8 @@ class UInputAction;
 class UInputMappingContext;
 class UBullyCombatComponent;
 class UBullyWeaponComponent;
+class UBullyRagdollComponent;
+class ABullyDoorLink;
 
 UENUM(BlueprintType)
 enum class EBullyGait : uint8
@@ -156,6 +158,8 @@ public:
 	UBullyCombatComponent* GetCombat() const { return Combat; }
 	/** slice-weapons: the arsenal (Config/Weapons.json). LMB fires the equipped weapon; with Fists it melees. */
 	UBullyWeaponComponent* GetWeapons() const { return Weapons; }
+	/** lane-C: physical body response (ragdoll on knockdown / KO / vehicle hit). */
+	UBullyRagdollComponent* GetRagdoll() const { return Ragdoll; }
 	bool HasJimmyMesh() const { return bHasJimmyMesh; }
 	/** Drops the camera boom's location lag for two frames (door teleports: no swoop from the old position). */
 	void SnapCamera();
@@ -177,6 +181,8 @@ public:
 	double LastDoorUseTime = -1000.0;
 	int32 DoorUseCount = 0;
 	bool bDoorBusy = false;
+	/** The door this pawn last walked THROUGH (ABullyDoorLink): leaving a shared interior door returns to it, not to the door's declared partner. */
+	TWeakObjectPtr<ABullyDoorLink> LastEntryDoor;
 
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	virtual void PawnClientRestart() override;
@@ -219,6 +225,7 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = "Bully") TObjectPtr<UStaticMeshComponent> BodyVis;
 	UPROPERTY(VisibleAnywhere, Category = "Bully") TObjectPtr<UStaticMeshComponent> HeadVis;
 	UPROPERTY(VisibleAnywhere, Category = "Bully") TObjectPtr<UBullyCombatComponent> Combat;
+	UPROPERTY(VisibleAnywhere, Category = "Bully") TObjectPtr<UBullyRagdollComponent> Ragdoll;
 	UPROPERTY(VisibleAnywhere, Category = "Bully") TObjectPtr<UBullyWeaponComponent> Weapons;
 
 	UPROPERTY(Transient) TObjectPtr<UInputMappingContext> MappingContext;

@@ -414,3 +414,49 @@ passes lobby -> office -> out at walk, run and sprint gait; risers (20.6 cm) are
   software Lumen's distance-field light leakage. `r.RayTracing.Shadows=True` darkened the gate wall and courtyard,
   and `r.Lumen.HardwareRayTracing.LightingMode=2` changed nothing indoors. The project stays on software Lumen until
   the interior lighting is re-balanced for HWRT (evidence `~/bully-remake-evidence/ae/hwrt_test/`).
+
+## Engine fixes, lane E (2026-10-20)
+
+All verified by `tools/ue/run_physics_smoke.sh` (`-BRPhysicsSmoke`, 65 checks) plus the regular smokes.
+
+- Door placement (`import_content.select_door_links`): a link is spawned only if its own interior scene and its partner's are imported
+  (`--scenes core` no longer spawns 113 doors into the void; skipped ids are logged); triggers use the oriented box + yaw.
+- Ragdoll vs teleports: `UBullyRagdollComponent::Abort()` runs before every teleport (door, mission `TeleportPlayer`, `BRGo`, sandbox, walk
+  runner); a ragdoll also drops itself if the capsule is found > `ExternalMoveTolerance` (60 cm) from where it put it (any other teleport).
+  Possessing a ragdolled pawn (brawl AI) puts the movement component back to Falling; the ragdoll tick now keeps it off.
+- Recovery: Jimmy gets up `PlayerKOGetUpSeconds` (4.5 s) after a KO (mission retry resets him sooner); a stagger that threw the body ends in
+  a get-up (`bOnStagger` is safe to enable).
+- `ABullyDoorLink`: releases only an input lock it took; a shared interior door returns to the door the pawn came in by
+  (`ABullyCharacter::LastEntryDoor`); only mission triggers the traveller touched are force-entered (`AMissionTrigger::TouchesSegment`);
+  `r.LumenScene.FastCameraMode` is ref-counted and restored on timer or EndPlay.
+- `[ConsoleVariables] p.Chaos.Collision.OneSidedTriangleMesh=0` (DefaultEngine.ini): simulated bodies hit the single-sided room shells from both sides.
+- Bystanders (`AAmbientWalker`, `[/Script/BullyRemake.AmbientWalker]`): a student's first hit makes idle students within 12 m flee or join by
+  student-id rule (nerd/girl flee, boy/prefect join); mission NPCs never react. Students do not fight each other (only the player).
+
+## Whole world in the map, stage 2 (2026-10-20)
+
+    python3 -m tools.importers --install <bullyorig> world --preset all && python3 -m tools.importers.col --install <bullyorig>
+    tools/ue/run_import.sh --scenes all          # 83 scenes, 2331 meshes + 129 COL meshes, ~41 min cold, ~30 s re-run
+    tools/ue/run_import_grass.sh                 # always after a level rebuild (it drops the grass actors)
+    python3 tools/ue/gen_teleport_spots.py       # Config/InteriorSpots.json (47 spots)
+
+- Result (report `Saved/BullyImport/report_20261020-145539.json`): 0 errors, 0 warnings; 6495 placed, 129 COL blockers, 113 door links,
+  3961 material instances, 3190 interior actors on lighting channel 1.
+- **Sea** (`place_sea`): one flat plane at z 0 (`MI_BullySea`, opaque, roughness 0.12, no collision, no shadow/DF) over UE x -33500..300000,
+  y -300000..300000, i.e. the outdoor map and the open sea; it stops short of the interior pockets (game x < -389). Placed only when a
+  town scene is imported. Colour is an ESTIMATE (no reference render).
+- **River/lake water** (`water_layer == "base"` from `world.patch_water_materials`): same dark colour as the sea, alpha 0.92, roughness
+  0.08. With the master's default roughness 0.85 the untextured tint rendered as flat pale-cyan paint.
+- **Interior lighting**: `lighting_variants.json` `interior.scene_prefixes` is now `["i"]`, so the town interiors (grocery, asylum, shops,
+  hide-outs, ...) get the channel-1 isolation and interior key like the school rooms; outdoor scenes start with `t` / `zone_`.
+- **Camera**: `ABullyCharacter` capsules ignore `ECC_Camera` (a student walking between the lens and Jimmy collapsed the spring arm onto
+  his back).
+- `gen_teleport_spots.py` matches scene names case-insensitively (AE manifest names are lower case; girls' dorm, BMX and the four
+  hide-outs were silently skipped).
+- **Principal's office door** (`doors.py` `EXIT_FALLBACK`): the inner door is now the double door in the secretary room's north wall
+  (game (-701.25, 217.4, 31.55), arrival 3.5 m straight into the room). ExitLocs `Principal 0` lies 13 m outside the `princoff` shell, so the
+  old arrival dropped the pawn into the void (found by `run_stairs_check.sh`, pawn at z -800000). `walk_stairs_full.json` now goes through
+  that door and back out (the office is a separate pocket, as in the original).
+- **Door retry** (`ABullyDoorLink::OnTriggerBegin`): a use refused by the 1.5 s re-entry cooldown is retried every 0.25 s while the player
+  still overlaps the trigger. An overlap begins only once, so walking straight back into a doorway right after arriving left the
+  player standing in it.

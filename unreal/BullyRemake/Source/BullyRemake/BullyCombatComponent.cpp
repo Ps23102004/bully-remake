@@ -3,6 +3,8 @@
 
 #include "Animation/AnimSequence.h"
 #include "BullyCharacter.h"
+#include "BullyCombatPawn.h"
+#include "BullyRagdollComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
@@ -564,6 +566,10 @@ void UBullyCombatComponent::ResetFighter()
 	Health = MaxHealth;
 	Guard = GuardMax;
 	PushTimeLeft = 0.f;
+	if (ABullyCharacter* BC = Cast<ABullyCharacter>(GetOwner()))
+	{
+		if (UBullyRagdollComponent* RD = BC->GetRagdoll()) { RD->Abort(); }
+	}
 	GetOwner()->CustomTimeDilation = 1.f;
 	HitStopUntil = -1.0;
 	SetState(EBullyCombatState::Idle);
@@ -773,7 +779,7 @@ void UBullyCombatComponent::ApplyHitTo(UBullyCombatComponent* V, const FBullyCom
 	}
 }
 
-void UBullyCombatComponent::ApplyWeaponHit(EBullyHitReaction Reaction, float Damage)
+void UBullyCombatComponent::ApplyWeaponHit(EBullyHitReaction Reaction, float Damage, const FVector& Launch)
 {
 	if (!GetOwner() || !GetWorld()) { return; }
 	FBullyCombatMove M;
@@ -781,7 +787,17 @@ void UBullyCombatComponent::ApplyWeaponHit(EBullyHitReaction Reaction, float Dam
 	M.Reaction = Reaction;
 	M.Damage = Damage;
 	M.bUnblockable = true;   // a thrown bottle / slingshot pellet is not a meleed blow to parry
+	PendingLaunch = Launch;
 	ReceiveHit(nullptr, M, Damage);
+	PendingLaunch = FVector::ZeroVector;
+}
+
+// A pair/beaten pose plays on the capsule-attached mesh: drop a still-running ragdoll first (a knocked-down fighter
+// whose health hit the floor, or a humiliation KO on a downed body), or the clip plays on a limp detached body.
+static void AbortActiveRagdoll(AActor* Owner)
+{
+	const ABullyCharacter* BC = Cast<ABullyCharacter>(Owner);
+	if (UBullyRagdollComponent* RD = BC ? BC->GetRagdoll() : nullptr) { if (RD->IsActive()) { RD->Abort(); } }
 }
 
 UBullyCombatComponent::EHitResult UBullyCombatComponent::ReceiveHit(UBullyCombatComponent* Attacker, const FBullyCombatMove& M, float Damage)
@@ -854,6 +870,7 @@ UBullyCombatComponent::EHitResult UBullyCombatComponent::ReceiveHit(UBullyCombat
 		if (State != EBullyCombatState::Beaten)
 		{
 			if (Partner.IsValid()) { Partner->Partner.Reset(); Partner.Reset(); }
+			AbortActiveRagdoll(GetOwner());
 			SetState(EBullyCombatState::Beaten);
 			PlayClip(PickClip(StaggerClips, KOClip), false, 1.f, 0.f, BeatenLoopClip);
 			Fire(TEXT("beaten"));
@@ -872,6 +889,7 @@ UBullyCombatComponent::EHitResult UBullyCombatComponent::ReceiveHit(UBullyCombat
 		{
 			// humiliation: the pair clip plays out, then the KO loop
 			if (Partner.IsValid()) { Partner->Partner.Reset(); Partner.Reset(); }
+			AbortActiveRagdoll(GetOwner());
 			SetState(EBullyCombatState::KO);
 			if (Pose.Clip == M.VictimClip && bPoseActive) { FollowLoopClip = KOLoopClip; }
 			else { PlayClip(M.VictimClip, false, 1.f, 0.f, KOLoopClip); }
@@ -884,6 +902,44 @@ UBullyCombatComponent::EHitResult UBullyCombatComponent::ReceiveHit(UBullyCombat
 	}
 	EnterReaction(IsDown() ? EBullyHitReaction::GroundHit : M.Reaction, Attacker, &M);
 	return EHitResult::Hit;
+}
+
+bool UBullyCombatComponent::TryRagdoll(EBullyHitReaction R, const FVector& Away, float Knock)
+{
+	ABullyCharacter* BC = Cast<ABullyCharacter>(GetOwner());
+	UBullyRagdollComponent* RD = BC ? BC->GetRagdoll() : nullptr;
+	if (!RD || !RD->WantsRagdoll(R == EBullyHitReaction::Knockdown, R == EBullyHitReaction::KO, R == EBullyHitReaction::Stagger)) { return false; }
+	const float Strength = Knock > 0.f ? FMath::Clamp(Knock / 100.f, 0.6f, 2.5f) : 1.f;
+	FVector L = PendingLaunch;
+	if (L.IsNearlyZero())
+	{
+		const float Speed = (R == EBullyHitReaction::KO ? RD->KOLaunchSpeed : RD->KnockdownLaunchSpeed) * Strength;
+		L = Away * Speed + FVector(0.f, 0.f, RD->LaunchUpSpeed * Strength);
+	}
+	if (Cast<ABullyCombatPawn>(GetOwner())) { L *= RD->PartnerLaunchScale; }   // tutorial sparring partner: stays in ground-kick reach
+	const bool bOk = RD->Start(L, R == EBullyHitReaction::KO ? FName(TEXT("ko")) : (R == EBullyHitReaction::Knockdown ? FName(TEXT("knockdown")) : FName(TEXT("stagger"))));
+	if (bOk) { PushTimeLeft = 0.f; }   // the body flies on physics now: no capsule push on top
+	return bOk;
+}
+
+bool UBullyCombatComponent::RecoverRagdoll(FName& OutClip)
+{
+	OutClip = GetUpClip;
+	ABullyCharacter* BC = Cast<ABullyCharacter>(GetOwner());
+	UBullyRagdollComponent* RD = BC ? BC->GetRagdoll() : nullptr;
+	if (!RD || !RD->IsActive()) { return true; }
+	if (!RD->IsSettled()) { return false; }   // let the body come to rest before it gets up
+	bool bBelly = false;
+	RD->Recover(ResolveClip(RD->GetUpBackClip), ResolveClip(RD->GetUpBellyClip), &bBelly);
+	OutClip = (bBelly && ResolveClip(RD->GetUpBellyClip)) ? RD->GetUpBellyClip : RD->GetUpBackClip;
+	return true;
+}
+
+void UBullyCombatComponent::BeginGetUp(FName Clip)
+{
+	SetState(EBullyCombatState::GettingUp);
+	StateDuration = GetUpTime;
+	PlayClip(Clip, false);
 }
 
 void UBullyCombatComponent::EnterReaction(EBullyHitReaction R, UBullyCombatComponent* Attacker, const FBullyCombatMove* M)
@@ -909,6 +965,11 @@ void UBullyCombatComponent::EnterReaction(EBullyHitReaction R, UBullyCombatCompo
 	if (Attacker && R != EBullyHitReaction::GroundHit && R != EBullyHitReaction::KO)
 	{
 		FaceToward(Attacker->GetOwner()->GetActorLocation(), 180.f);
+	}
+	if (R == EBullyHitReaction::Stagger && bFinisherKnocksDownOutsideMissions && Attacker && Attacker->IsPlayer() && !IsPlayer() && !Cast<ABullyCombatPawn>(GetOwner()))
+	{
+		const UMissionSubsystem* MS = UMissionSubsystem::Get(GetWorld());
+		if (!MS || !MS->IsActive()) { R = EBullyHitReaction::Knockdown; }
 	}
 	if (R == EBullyHitReaction::Flinch)
 	{
@@ -943,13 +1004,13 @@ void UBullyCombatComponent::EnterReaction(EBullyHitReaction R, UBullyCombatCompo
 		SetState(EBullyCombatState::HitStun);
 		StateDuration = StaggerTime;
 		React(Victim.IsNone() ? PickClip(StaggerClips, TEXT("HIT_HEAVY")) : Victim, NAME_None);
-		Push(Away, FMath::Max(Knock, 80.f), 0.25f);
+		if (!TryRagdoll(R, Away, Knock)) { Push(Away, FMath::Max(Knock, 80.f), 0.25f); }
 		break;
 	case EBullyHitReaction::Knockdown:
 		SetState(EBullyCombatState::Downed);
 		StateDuration = DownedTime;
 		React(Victim.IsNone() ? KnockdownClip : Victim, DownedLoopClip);
-		Push(Away, FMath::Max(Knock, 100.f), 0.3f);
+		if (!TryRagdoll(R, Away, Knock)) { Push(Away, FMath::Max(Knock, 100.f), 0.3f); }
 		Fire(TEXT("knocked_down"));
 		break;
 	case EBullyHitReaction::GroundHit:
@@ -958,12 +1019,20 @@ void UBullyCombatComponent::EnterReaction(EBullyHitReaction R, UBullyCombatCompo
 		SetState(EBullyCombatState::Downed);
 		StateDuration = FMath::Max(Left, DownedHitExtend);
 		PlayClip(GroundHitClip, false, 1.f, 0.f, DownedLoopClip);
+		// a kick on a ragdolled body shoves it
+		if (ABullyCharacter* BC = Cast<ABullyCharacter>(GetOwner()))
+		{
+			if (UBullyRagdollComponent* RD = BC->GetRagdoll())
+			{
+				if (RD->IsActive()) { RD->AddLaunch(Away * RD->GroundHitSpeed + FVector(0.f, 0.f, 60.f)); }
+			}
+		}
 		break;
 	}
 	case EBullyHitReaction::KO:
 		SetState(EBullyCombatState::KO);
 		React(Victim.IsNone() ? KOClip : Victim, KOLoopClip);
-		Push(Away, FMath::Max(Knock, 60.f), 0.3f);
+		if (!TryRagdoll(R, Away, Knock)) { Push(Away, FMath::Max(Knock, 60.f), 0.3f); }
 		Fire(TEXT("knocked_out"));
 		FireMission(IsPlayer() ? FName(TEXT("player_knocked_out")) : FName(TEXT("enemy_knocked_out")));
 		break;
@@ -1119,6 +1188,17 @@ void UBullyCombatComponent::TickComponent(float Dt, ELevelTick TickType, FActorC
 	case EBullyCombatState::HitStun:
 		if (StateTime >= StateDuration)
 		{
+			if (State == EBullyCombatState::HitStun)
+			{
+				// a stagger that threw the body (RagdollComponent bOnStagger) ends in a get-up, not in a standing capsule with a limp mesh
+				ABullyCharacter* BC = Cast<ABullyCharacter>(C);
+				if (BC && BC->GetRagdoll() && BC->GetRagdoll()->IsActive())
+				{
+					FName Up;
+					if (RecoverRagdoll(Up)) { BeginGetUp(Up); }
+					break;   // still tumbling: stay in HitStun a little longer
+				}
+			}
 			if (bBlockHeld)
 			{
 				SetState(EBullyCombatState::Blocking);
@@ -1134,9 +1214,9 @@ void UBullyCombatComponent::TickComponent(float Dt, ELevelTick TickType, FActorC
 	case EBullyCombatState::Downed:
 		if (StateTime >= StateDuration)
 		{
-			SetState(EBullyCombatState::GettingUp);
-			StateDuration = GetUpTime;
-			PlayClip(GetUpClip, false);
+			FName UpClip;
+			if (!RecoverRagdoll(UpClip)) { break; }
+			BeginGetUp(UpClip);
 		}
 		break;
 	case EBullyCombatState::GettingUp:
@@ -1161,8 +1241,18 @@ void UBullyCombatComponent::TickComponent(float Dt, ELevelTick TickType, FActorC
 	case EBullyCombatState::Grappled:
 		if (!Partner.IsValid()) { SetState(EBullyCombatState::Idle); }
 		break;
-	case EBullyCombatState::Beaten:
 	case EBullyCombatState::KO:
+		if (IsPlayer() && PlayerKOGetUpSeconds > 0.f && StateTime >= PlayerKOGetUpSeconds && !Cast<ABullyCombatPawn>(C))
+		{
+			// Jimmy does not stay on the floor for good (the mission fail/retry normally resets him first): back up, hurt
+			FName UpClip;
+			if (!RecoverRagdoll(UpClip)) { break; }
+			Health = FMath::Max(Health, MaxHealth * PlayerKOHealthFraction);
+			Note(FString::Printf(TEXT("player gets up after the KO (%.1fs), hp %.0f"), StateTime, Health));
+			BeginGetUp(UpClip);
+		}
+		break;
+	case EBullyCombatState::Beaten:
 		break;
 	}
 }

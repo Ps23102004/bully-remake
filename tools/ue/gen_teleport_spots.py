@@ -52,12 +52,12 @@ def main() -> int:
             continue
         loc = p.get("ue", {}).get("location_cm")
         if loc:
-            by_scene.setdefault(p["scene"], []).append(loc)
+            by_scene.setdefault(p["scene"].lower(), []).append(loc)   # AE manifest scene names are lower case
 
     spots = {}
     skipped = []
     for scene, key in FRIENDLY.items():
-        locs = by_scene.get(scene)
+        locs = by_scene.get(scene.lower())
         if not locs:
             skipped.append(scene)
             continue

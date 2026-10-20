@@ -6,6 +6,7 @@
 #include "BullyAnimInstance.h"
 #include "EngineUtils.h"
 #include "BullyCharacter.h"
+#include "BullyRagdollComponent.h"
 #include "Misc/App.h"
 #include "Components/CapsuleComponent.h"
 #include "Dom/JsonObject.h"
@@ -211,6 +212,7 @@ void UBullyWalkRunner::BeginStep(UWorld* World, ABullyCharacter* Pawn, FBullyWal
 	{
 		FVector L = S.Pos;
 		if (!S.bHasZ) { L.Z = Pawn->GetActorLocation().Z; }
+		if (UBullyRagdollComponent* RD = Pawn->GetRagdoll()) { RD->Abort(); }
 		Pawn->TeleportTo(L, FRotator(0.f, S.Yaw, 0.f), false, true);
 		Pawn->GetCharacterMovement()->StopMovementImmediately();
 		if (PC) { PC->SetControlRotation(FRotator(S.Pitch, S.Yaw, 0.f)); }
@@ -315,6 +317,7 @@ void UBullyWalkRunner::BeginStep(UWorld* World, ABullyCharacter* Pawn, FBullyWal
 				const float Leg = Fwd.Size();
 				const FVector From = Wk->GetActorLocation() + Fwd.GetSafeNormal() * FMath::Min(S.SpawnDist, 0.85f * Leg);
 				const FVector Face = Wk->GetActorLocation() - From;
+				if (UBullyRagdollComponent* RD = Pawn->GetRagdoll()) { RD->Abort(); }
 				Pawn->TeleportTo(From, FRotator(0.f, Face.Rotation().Yaw, 0.f), false, true);
 				Pawn->GetCharacterMovement()->StopMovementImmediately();
 			}

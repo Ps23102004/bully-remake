@@ -34,6 +34,7 @@ ROOT = "/Game/Imported"
 TEX_ROOT = ROOT + "/Textures"
 MAT_ROOT = ROOT + "/Materials"
 MESH_ROOT = ROOT + "/Meshes"
+COLLISION_ROOT = ROOT + "/Collision"   # collision-only meshes from World.img .col (tools/importers/col.py)
 MAP_PATH = ROOT + "/Maps/Bullworth"
 MASTER_VERSION = "5"          # bump to force master-material graph rebuild (instances keep their paths)
 MESH_VERSION = "4"            # bump to force mesh re-import + slot re-binding
@@ -126,6 +127,24 @@ def collect(manifest, imported, scenes, limit):
         with open(models[n]) as f:
             gltfs[n] = json.load(f)
     return placements, {n: models[n] for n in names}, gltfs
+
+
+def load_collision(imported, scenes):
+    """collision/index.json (tools/importers/col.py) -> ({(scene, index): model}, {model: gltf path}, {model: glTF}).
+    Empty when the importer's col step has not been run."""
+    path = os.path.join(imported, "collision", "index.json")
+    if not os.path.isfile(path):
+        warn("no %s: the game's invisible walls/floors are not placed (run python3 -m tools.importers.col)" % path)
+        return {}, {}, {}
+    with open(path) as f:
+        idx = json.load(f)
+    where = {(p["scene"], p["index"]): p["model"] for p in idx["placements"] if p["scene"] in scenes}
+    paths, gltfs = {}, {}
+    for name in sorted(set(where.values())):
+        paths[name] = os.path.join(imported, idx["models"][name]["gltf"])
+        with open(paths[name]) as f:
+            gltfs[name] = json.load(f)
+    return where, paths, gltfs
 
 
 # --------------------------------------------------------------------------------------------
@@ -418,6 +437,10 @@ def mat_key(m, base_dir, imported):
         "diffuse": [round(c, 4) for c in diff],
         "alpha": round(float(gm.get("alpha", 1.0)), 4),
     }
+    if ex.get("water_layer") == "base":
+        # river/lake surface (world.patch_water_materials): an untextured tint with the master's default roughness 0.85
+        # read as flat pale-cyan paint under the sun. Dark, glossy and nearly opaque instead, same colour as the sea.
+        d.update(diffuse=list(SEA_COLOR), alpha=0.92, water=True)
     return d, hashlib.sha1(json.dumps(d, sort_keys=True).encode()).hexdigest()
 
 
@@ -458,6 +481,9 @@ def get_mi(d, h):
         MEL.set_material_instance_scalar_parameter_value(mi, "SpecularScale", min(1.0, 0.25 + 2.0 * d["spec"]))
     if d["blend"] == "masked":
         MEL.set_material_instance_scalar_parameter_value(mi, "AlphaCutoff", d["cutoff"])
+    if d.get("water"):
+        for p, v in (("SpecularBase", 0.5), ("SpecularScale", 0.0), ("RoughnessMax", 0.08), ("RoughnessRange", 0.0)):
+            MEL.set_material_instance_scalar_parameter_value(mi, p, v)
     dr, dg, db = d["diffuse"]
     MEL.set_material_instance_vector_parameter_value(mi, "DiffuseTint", unreal.LinearColor(dr, dg, db, d["alpha"]))
     MEL.update_material_instance(mi)
@@ -553,19 +579,28 @@ def bind_slots(name, sm, mats, base_dir, imported, stats):
 
 
 def ensure_complex_collision(sm):
-    """Phase 0 collision: the render triangles ARE the collision (complex-as-simple, so pawn capsules, camera
-    probes and ground traces all use them). The game's own Coll/ data is not parsed yet. True if changed."""
+    """The render triangles ARE the collision (complex-as-simple, so pawn capsules, camera probes and ground traces
+    all use them), DOUBLE-SIDED: UBodySetup::bDoubleSidedGeometry defaults to false, and then Chaos culls back faces
+    for raycasts AND sweeps (ChaosInterfaceUtils.cpp SetCullsBackFaceRaycast(!bDoubleSided); the sweep visitors in
+    TriangleMeshImplicitObject.cpp honour it), so a pawn walked straight through any wall it met from behind
+    (docs/re-notes/ae-interiors.md). Applied at runtime, no cook. The game's own invisible walls/floors come from
+    World.img .col (COLLISION_ROOT). True if changed."""
     body = sm.get_editor_property("body_setup")
     if not body:
+        warn("mesh %s has no body setup: no collision" % sm.get_name())
         return False
+    changed = False
     want = unreal.CollisionTraceFlag.CTF_USE_COMPLEX_AS_SIMPLE
-    if body.get_editor_property("collision_trace_flag") == want:
-        return False
-    body.set_editor_property("collision_trace_flag", want)
-    return True
+    if body.get_editor_property("collision_trace_flag") != want:
+        body.set_editor_property("collision_trace_flag", want)
+        changed = True
+    if not body.get_editor_property("double_sided_geometry"):
+        body.set_editor_property("double_sided_geometry", True)
+        changed = True
+    return changed
 
 
-def import_meshes(imported, gltf_paths, gltfs, stage_dir):
+def import_meshes(imported, gltf_paths, gltfs, stage_dir, root=MESH_ROOT):
     stats = {"total": len(gltfs), "imported": 0, "skipped_same": 0, "failed": 0, "slots_bound": 0,
              "slots_unbound": 0, "seconds": 0.0}
     t_start = time.time()
@@ -578,7 +613,7 @@ def import_meshes(imported, gltf_paths, gltfs, stage_dir):
                 with open(os.path.join(os.path.dirname(src), b["uri"]), "rb") as f:
                     bin_extra += hashlib.sha1(f.read()).digest()
         sig = sha1_file(src, bin_extra + MESH_VERSION.encode())
-        ap = "%s/%s" % (MESH_ROOT, sanitize(name))
+        ap = "%s/%s" % (root, sanitize(name))
         base_dir = os.path.dirname(src)
         mats = g.get("materials", [])
         if tag_matches(ap, sig):
@@ -602,7 +637,7 @@ def import_meshes(imported, gltf_paths, gltfs, stage_dir):
             two_sided = any(m.get("doubleSided") for m in mats)
             task = unreal.AssetImportTask()
             task.set_editor_property("filename", staged)
-            task.set_editor_property("destination_path", MESH_ROOT)
+            task.set_editor_property("destination_path", root)
             task.set_editor_property("destination_name", sanitize(name))
             task.set_editor_property("automated", True)
             task.set_editor_property("replace_existing", True)
@@ -650,9 +685,31 @@ def spawn(cls, loc, rot=None, label=None, folder=None):
     return a
 
 
-def place_door_links(eas):
-    """Spawn one ABullyDoorLink per entry of tools/ue/door_links.json (C++ class in Source/BullyRemake).
-    Our own data: trigger box + exit point per door side, in UE cm (see the file's _note)."""
+def select_door_links(links, scenes):
+    """(kept, skipped_ids): a link survives only if its own interior scene AND its partner's are imported (scene None =
+    the open town, always there). Without this the 113 links spawn on a partial import (--scenes core) and lead into the void."""
+    by_id = {d["id"]: d for d in links}
+    have = set(scenes)
+    kept, skipped = [], []
+    for d in links:
+        partner = by_id.get(d["partner"])
+        need = [d.get("scene"), partner.get("scene") if partner else None]
+        if partner is None or any(s and s not in have for s in need):
+            skipped.append(d["id"])
+        else:
+            kept.append(d)
+    return kept, skipped
+
+
+def door_trigger(d):
+    """(center_cm, half_extent_cm, yaw) of the doorway box: the oriented box (door-links/2) when present, else the world AABB."""
+    t = d["trigger"].get("oriented") or d["trigger"]
+    return t["center_cm"], t["half_extent_cm"], float(t.get("yaw", 0.0)) if "oriented" in d["trigger"] else 0.0
+
+
+def place_door_links(eas, scenes):
+    """Spawn one ABullyDoorLink per entry of tools/ue/door_links.json whose scenes were imported (C++ class in
+    Source/BullyRemake). Our own data: oriented trigger box + exit point per door side, in UE cm (see the file's _note)."""
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "door_links.json")
     if not os.path.exists(path):
         return 0
@@ -662,11 +719,13 @@ def place_door_links(eas):
         return 0
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
+    links, skipped = select_door_links(data["links"], scenes)
+    if skipped:
+        log("door links skipped (scene or partner scene not imported): %d of %d: %s" % (len(skipped), len(data["links"]), ", ".join(skipped)))
     n = 0
-    for d in data["links"]:
-        c = d["trigger"]["center_cm"]
-        h = d["trigger"]["half_extent_cm"]
-        a = spawn(cls, unreal.Vector(*c), None, "BR_Door_" + d["id"], "Gameplay/Doors")
+    for d in links:
+        c, h, yaw = door_trigger(d)
+        a = spawn(cls, unreal.Vector(*c), unreal.Rotator(0, 0, yaw), "BR_Door_" + d["id"], "Gameplay/Doors")   # Rotator(roll, pitch, yaw)
         if a is None:
             warn("door link %s: spawn failed" % d["id"])
             continue
@@ -678,11 +737,90 @@ def place_door_links(eas):
         trig = a.get_editor_property("trigger")
         trig.set_editor_property("box_extent", unreal.Vector(*h))
         n += 1
-        log("door link %s -> %s at %s" % (d["id"], d["partner"], c))
+        log("door link %s -> %s at %s yaw %.1f" % (d["id"], d["partner"], c, yaw))
     return n
 
 
-def build_level(manifest, placements, scenes):
+def place_collision(eas, placements, collision):
+    """One hidden, collision-only actor per COL marker placement (InvisibleWall profile: blocks pawns, vehicles and
+    projectiles, ignores visibility traces; the camera ignores it too, as walls you cannot see should not shove
+    the camera)."""
+    n = 0
+    meshes = {}
+    for p in placements:
+        name = collision.get((p["scene"], p["index"]))
+        if not name:
+            continue
+        if name not in meshes:
+            ap = "%s/%s" % (COLLISION_ROOT, sanitize(name))
+            meshes[name] = EAL.load_asset(ap) if EAL.does_asset_exist(ap) else None
+        sm = meshes[name]
+        if sm is None:
+            warn("collision mesh %s not imported" % name)
+            continue
+        ue = p["ue"]
+        qx, qy, qz, qw = ue["rotation_quat_xyzw"]
+        a = eas.spawn_actor_from_class(unreal.StaticMeshActor, unreal.Vector(*ue["location_cm"]),
+                                       unreal.Quat(qx, qy, qz, qw).rotator())
+        if a is None:
+            warn("collision spawn failed %s/%d %s" % (p["scene"], p["index"], name))
+            continue
+        a.set_actor_scale3d(unreal.Vector(*ue["scale"]))
+        c = a.static_mesh_component
+        c.set_static_mesh(sm)
+        c.set_collision_profile_name("InvisibleWall")
+        a.set_actor_hidden_in_game(True)
+        try:
+            c.set_collision_response_to_channel(unreal.CollisionChannel.ECC_CAMERA,
+                                                unreal.CollisionResponseType.ECR_IGNORE)
+            for prop, val in (("visible", False), ("hidden_in_game", True), ("cast_shadow", False),
+                              ("affect_distance_field_lighting", False), ("affect_dynamic_indirect_lighting", False)):
+                c.set_editor_property(prop, val)
+        except Exception as e:      # still hidden in game and blocking; only the extras failed
+            warn("collision actor %s: %s" % (name, e))
+        a.set_actor_label("COL_%s_%03d_%s" % (p["scene"], p["index"], name))
+        a.set_folder_path("Collision/%s" % p["scene"])
+        a.set_editor_property("tags", [unreal.Name("br_collision"), unreal.Name("br_scene:" + p["scene"]),
+                                       unreal.Name("br_model:" + name)])
+        n += 1
+    return n
+
+
+# Sea: the AE has no sea geometry, only stub markers at z 0 (manifest water_markers, docs/re-notes/ae-town.md).
+# One flat opaque plane at z 0 over the outdoor map. It stops at game x -335 so the interior pockets (x -900..-389)
+# stay dry; no collision (the player falls to the sea bed, as there is no swimming).
+SEA_RECT_CM = (-33500.0, 300000.0, -300000.0, 300000.0)   # UE x0, x1, y0, y1
+SEA_COLOR = (0.02, 0.07, 0.085)                            # ESTIMATE: no reference render
+
+
+def place_sea(eas, manifest):
+    if not any(w["scene"].startswith("t") for w in manifest.get("water_markers", [])):
+        return 0
+    if MASTERS.get(("opaque", False)) is None:
+        MASTERS[("opaque", False)] = EAL.load_asset(MAT_ROOT + "/M_Bully_Opaque")
+    path = MAT_ROOT + "/MI_BullySea"
+    mi = EAL.load_asset(path) if EAL.does_asset_exist(path) else AT.create_asset(
+        "MI_BullySea", MAT_ROOT, unreal.MaterialInstanceConstant, unreal.MaterialInstanceConstantFactoryNew())
+    MEL.set_material_instance_parent(mi, MASTERS[("opaque", False)])
+    MEL.set_material_instance_vector_parameter_value(mi, "DiffuseTint", unreal.LinearColor(*SEA_COLOR, 1.0))
+    for p, v in (("SpecularBase", 0.5), ("SpecularScale", 0.0), ("RoughnessMax", 0.12), ("RoughnessRange", 0.0)):
+        MEL.set_material_instance_scalar_parameter_value(mi, p, v)
+    MEL.update_material_instance(mi)
+    EAL.save_loaded_asset(mi, only_if_is_dirty=False)
+    x0, x1, y0, y1 = SEA_RECT_CM
+    a = spawn(unreal.StaticMeshActor, unreal.Vector((x0 + x1) / 2, (y0 + y1) / 2, 0.0), None, "BR_Sea", "Environment")
+    c = a.static_mesh_component
+    c.set_static_mesh(load_engine("/Engine/BasicShapes/Plane"))   # 100 x 100 cm
+    a.set_actor_scale3d(unreal.Vector((x1 - x0) / 100.0, (y1 - y0) / 100.0, 1.0))
+    c.set_material(0, mi)
+    c.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
+    for prop in ("cast_shadow", "affect_distance_field_lighting"):
+        c.set_editor_property(prop, False)
+    a.set_editor_property("tags", [unreal.Name("br_sea")])
+    return 1
+
+
+def build_level(manifest, placements, scenes, collision=None):
     stats = {"placed": 0, "skipped_invisible": 0, "skipped_no_gltf": 0, "skipped_no_mesh": 0}
     les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
     eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
@@ -735,12 +873,16 @@ def build_level(manifest, placements, scenes):
         a.set_editor_property("tags", [unreal.Name("br_scene:" + p["scene"]), unreal.Name("br_model:" + name)])
         stats["placed"] += 1
 
+    stats["collision_placed"] = place_collision(eas, placements, collision or {})
+    if any(s.startswith("t") and s != "tschool" for s in scenes):
+        stats["sea"] = place_sea(eas, manifest)
+
     # lighting rig (tools/ue/lighting.py; re-runnable standalone through run_lighting.sh)
     stats["lighting"] = lighting.build_rig(eas, os.environ.get("BR_LIGHT_VARIANT"))
     # spawn point in front of the main gates (game ~(322, -73)), facing the main building
     spawn(unreal.PlayerStart, unreal.Vector(32200, 7300, 1200), unreal.Rotator(0, 0, 180), "BR_PlayerStart", "Gameplay")
 
-    stats["door_links"] = place_door_links(eas)
+    stats["door_links"] = place_door_links(eas, scenes)
 
     if not les.save_current_level():
         raise RuntimeError("save_current_level failed")
@@ -763,9 +905,11 @@ def main():
     manifest = load_manifest(imported)
     scenes = select_scenes(manifest, os.environ.get("BR_SCENES", "all"))
     placements, gltf_paths, gltfs = collect(manifest, imported, scenes, limit)
+    collision, col_paths, col_gltfs = load_collision(imported, scenes)
     REPORT.update({"imported_dir": imported, "scenes": scenes, "steps_requested": steps, "limit": limit,
                    "models_selected": len(gltfs),
-                   "placements_selected": len(placements)})
+                   "placements_selected": len(placements), "collision_models": len(col_gltfs),
+                   "collision_placements": len(collision)})
     log("scenes=%s models=%d placements=%d steps=%s" % (",".join(scenes), len(gltfs), len(placements), steps))
 
     def run(step, fn, *a):
@@ -788,8 +932,10 @@ def main():
             ensure_masters_done = True
         if "meshes" in steps:
             run("meshes", import_meshes, imported, gltf_paths, gltfs, stage_dir)
+            if col_gltfs:
+                run("collision", import_meshes, imported, col_paths, col_gltfs, stage_dir, COLLISION_ROOT)
         if "level" in steps:
-            run("level", build_level, manifest, placements, scenes)
+            run("level", build_level, manifest, placements, scenes, collision)
     except Exception as e:
         err("fatal: %s\n%s" % (e, traceback.format_exc()))
     REPORT["wall_seconds"] = round(time.time() - T0, 1)

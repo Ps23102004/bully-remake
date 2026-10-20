@@ -1,9 +1,12 @@
 <!-- OWNER: builder-A (importers) -->
 # AE (Anniversary Edition, iOS) materials -> textures
 
-Source: `data_1.zip`, flat `bully/` namespace, 29,660 entries: 5,714 `.msh`, 14,064 `.tex`, 6,542 `.mtl`
-(encrypted, ignored). Code: `tools/importers/ae.py`. Measured by a scratch script outside the repo
-over the real install (not committed; game bytes never enter git).
+Source: `data_1.zip`, flat `bully/` namespace, 29,660 entries: 5,714 `.msh`, 14,064 `.tex`, 6,542 `.mtl`.
+**Since 2026-10-20 the `.mtl` files are decoded (`tools/importers/wx.py`, section 6) and are the source of every
+material's textures, effect and flags; sections 1-4 describe the name heuristic that is now only the fallback for a
+material without a `.mtl` (none of the 6,250 materials the `.msh` files use lacks one).** Code: `tools/importers/ae.py`
+(`material_info`, `resolve_material_textures`), `convert_ae.py`. Measured by scratch scripts outside the repo over the
+real install (not committed; game bytes never enter git).
 
 ## .msh header (verified on all 5,714 files)
 
@@ -70,7 +73,7 @@ materials) the first resolver left 10 materials / 16 models without a diffuse an
    `cn_strata_swap_d` at r = 0.97), `zrc_bikepath_swap`, `zveg_bush3z_swap`. Over all 6,250 materials 24 change diffuse:
    13 untextured ones filled by `MATERIAL_FIXES`, 6 by the winter rule, 5 forced by `MATERIAL_FIXES`; 16 of the 1,600
    academy materials change.
-2. **`MATERIAL_FIXES`** (rule `fix:<kind>`), keyed by material-name prefix, only used when the texture exists:
+2. **`MATERIAL_FIXES`** (rule `fix:<kind>`; REMOVED, superseded by the `.mtl`, see section 6, kept here as the record of the evidence):
 
 | material | diffuse | evidence |
 |---|---|---|
@@ -116,35 +119,103 @@ PC note "green channel unverified" is settled for the AE path. Tangents are stil
 - Chalk decals `sc_hopscotch`, `sc_tictac`, `sc_soccergoalline` are RGB chalk on black with no alpha: blend mode
   additive (convert_ae.ADDITIVE) instead of opaque black rectangles.
 
-## 5. `.mtl` / `.xml` cipher (time-boxed attempt, NOT broken)
+## 5. `.mtl` / `.xml` cipher: broken
 
-What is established about the 6,542 `.mtl` (and 338 `.xml`), enough to continue from; scratch scripts were outside the repo.
+Superseded by `docs/re-notes/ae-story.md` section 3 and `tools/importers/wx.py` (custom base32 + keystream, all 6,931
+`Wx` files decode). The attempt notes that used to be here (position-keyed stream, carry-like symbol pairs) are explained
+by that cipher: the keystream is added bytewise before the 5-bit packing.
 
-* Text: `Wx` tag (both types; `x` occurs only at index 1) then 32 symbols `012345689CDEGHKMQRUWXafijlnopsvz`: 5 bits per
-  symbol, packed MSB first over bytes (length = 2 + ceil(8n/5); a one-byte change flips exactly the symbols its bits
-  fall in, checked on the digit at the end of 178 name pairs and 8 alignments).
-* Deterministic and position-keyed: the first 29 symbols are identical in every `.mtl`; the same plaintext change at the
-  same absolute position gives the same symbol pair in every file (246 position/digit/digit groups, 0 violations).
-  So it is a fixed keystream indexed by position, with no per-file nonce.
-* Layout: material name as the last bytes (n-6 is its last byte in 4,919 of 6,542 files) and, for plain materials, three
-  earlier occurrences of the texture stems (diffuse, normal, specular, 11.25 bytes apart).
-* Not XOR with a relabelled alphabet (2,957 distinct (symbol, symbol, xor) triples vs <= 496 possible) and not additive
-  mod 32. The symbol depends on the plaintext group AND on the next group: the variant is "next plaintext value >= a
-  per-position threshold" in 96.7 % of 321 cells, i.e. carry-like, as if a big number were added bytewise. The carry
-  partners form 16 disjoint symbol pairs and the +1 successors 8 four-cycles (`D H 4 3`, `z i 8 R`, ...), which
-  a plain base-32 addition does not give. A per-byte add-with-carry plus a scrambled alphabet fits some of it, not all.
-* The iOS executable has `LC_ENCRYPTION_INFO_64` with `cryptid 1` over one page only (16 KB..20 KB), so most of
-  `__TEXT` is readable: finding the loader that decrypts `.mtl` there is the realistic next step (not attempted).
-* Useful side effect of the determinism: the ciphertext of a material shares long windows with materials that use the
-  same texture stems at the same absolute positions. Best-matching other material (score = sum of -log frequency of
-  the shared symbols, positions 60..L-45): `mat_zrc_grasse_swap` -> `mat_rc_grasse_swap` (233, next 181),
-  `mat_re01_bookshelf` -> `mat_sc30_bshelf` (136, next 115); with the name window included `mat_re01_sinkvalve2_*` ->
-  `mat_sc29_sink`. These agree with the aliases above; the other aliases could not be confirmed this way.
+## 6. The decoded `.mtl` (2026-10-20, lane M)
+
+Format (every one of the 6,542 files parses; `ae.parse_mtl`):
+
+```
+{
+	effect(effect)=bully_normalspec,
+	physical(physicalmaterial)=,                  # always empty (6,537 files); no physics surface here
+	doublesided(bool)=true,                       # optional flags: doublesided 2,258, alphatest 709, transparent 212,
+	alphatest(bool)=true, transparent(bool)=true, #   unlit 51, noshadows 20 (only the value `true` occurs)
+	textures(orderedarray<texture2d>)=[3,a_d,a_n,a_s],
+	vectors(orderedarray<vector4>)=[2,{x(float)=..,y(float)=..,z(float)=..,w(float)=..},{...}]   # 305 files
+}
+```
+(`width`/`height`/`edgethickness` appear on 7 helper materials such as `constantcolor` and `toon`.)
+
+**Effects (20)**: `bully_normalspec` 3,184, `bully_normal` 1,294, `bully_diffuse` 1,089, `bully_spec` 896, then `diffuseuv` 22,
+`normaluv` 12, `normalspeccolor` 12, `specuv` 9, `normalspecuv` 8, `waterripple` 3, `diffusecolor` 2, `diffuse` 2,
+`constantcolor` 2, and one each of `unlit`, `radarmask`, `toon`, `comic`, `eff_marker`, `watermain`, `sky`.
+
+**Slot order is fixed by the effect name**: `bully_<diffuse|spec|normal|normalspec>[uv|color]` lists diffuse, then normal
+(if the name has `normal`), then specular (if it has `spec`); water effects are diffuse + normal; `radarmask` is base +
+mask. Checked on the stems: of 3,184 `normalspec` files 2,905 are exactly `*_d, *_n, *_s`, the rest differ only in the
+stem's own spelling (a spec slot can name a `_d` texture; the slot, not the suffix, decides the role).
+`ae.effect_roles` encodes this; a slot beyond the effect's roles becomes "extra".
+
+**Vectors** (INFERRED from value ranges; there is no UV-tiling field in the `.mtl`: tiling is in the mesh UVs, and the
+`*uv` effects scroll them at run time, rate not stored):
+
+| effect family | vectors[0] | vectors[1] | vectors[2] |
+|---|---|---|---|
+| `bully_diffuse/spec/normal/normalspec` | colour tint (always 1,1,1 in the 305 files that have it) + `w` = opacity (0.09..0.99 on 91 of them) | spec effects: (x, y) on 214 materials, x 2..40 (typically 4..10), y 0..10 (typically 0.2..0.8): read as specular power and strength | `speccolor`: (1,1,1,1) |
+| `bully_waterripple`, `bully_watermain` | (1,1,1,1) | UV scroll rate, e.g. (0.875, 0) | watermain: (2.0, 0.5, 0.1) wave parameters (unidentified) |
+| `bully_sky` | three gradient colours | | |
+| `constantcolor`, `toon` | the colour | | |
+
+There are no glow or environment slots: the maximum is 3 textures (diffuse, normal, specular).
+
+**Flags -> blend mode** (`convert_ae.blend_for`): `alphatest` and the diffuse has alpha -> `masked` (cutoff 0.5, two-sided);
+`transparent` (and an alpha channel or opacity < 1) -> `translucent`; otherwise `opaque` (two-sided by the interiors rule,
+ae-interiors.md); `unlit`, `noshadows`, `doublesided` are recorded in `extras.ae.flags`. There is **no additive flag**: the
+light-beam / halo / glow / chalk materials stay `additive` when the name matches `glow|additive|sunbeam|hopscotch|tictac|
+soccergoalline` and the `.mtl` is unlit, transparent, alphatest or a diffuse-only sprite (the chalk decals are alphatest on
+an alpha-less texture: all pixels pass, so they must be additive). A glow-named material with a normal/spec map and no flag
+is a lit surface (arcade cabinets, interior window panes) and stays opaque. Water: `waterripple` is `transparent` ->
+translucent, `watermain` (river bed) opaque; world.py `patch_water_materials` still recolours `mat_wtr_*` by name.
+The old name rules (`_sp` = specular in alpha, alpha channel -> masked) apply only to a material with no `.mtl`.
+
+glTF output per material: `extras.ae` = {material, rule ("mtl"), source, effect, flags, diffuse/normal/specular stems,
+vectors, specular_power/strength, extra_textures, water + uv_scroll, uv_animated}; the specular map is now also decoded and
+listed as `extras.textures.gloss` (the UE master's existing Gloss slot); a non-neutral tint or an opacity < 1 on a translucent
+material goes to `baseColorFactor` and `extras.gamebryo.material.{diffuse, alpha}` (read by `import_content.mat_key`).
+
+### Measured against the old name heuristic (all 6,250 materials used by the 5,714 `.msh`)
+
+| | count |
+|---|---|
+| materials with a `.mtl` / without | 6,250 / 0 |
+| `.mtl` names a texture that is not in the archive | 9 slots in 9 materials, 5 stems (`ap_boldroll_d`, `circle_button`, `sil4_cnfraffysgn_d`, `mask_s`, `sc27_fence01_n`); the heuristic fills the role if it can |
+| diffuse differs from the heuristic | 29 different, 49 the heuristic found none |
+| normal differs / heuristic found none / `.mtl` has none | 32 / 441 / 126 |
+| specular differs / heuristic found none / `.mtl` has none | 39 / 240 / 1,066 (the name guessed an `_s` the material does not use) |
+| diffuse that is a snow (`_wi`, `_in_grass0N`) variant | 3: one pedestrian coat, `zbu_cobroaddirt_swap` and `zrc_planks_swap` (both the `.mtl`'s own choice) |
+
+Placed in the full import (`world --preset all`, 2,331 models): 3,968 distinct materials, all resolved from the `.mtl`
+(0 heuristic, 0 `mtl+heuristic`), 3,966 with a diffuse (the other two name a texture that is not shipped:
+`mat_sil4_popcup`, `mat_sil4_cnfraffysgn`), 2,408 with a normal, 2,055 with a specular map; academy scenes alone
+(814 models): 1,512 materials, all from the `.mtl`, 15 of them with a different diffuse than the heuristic gave. Blend modes
+(all): opaque 3,422, masked 357, translucent 165, additive 24. Against the old rule (alpha channel -> masked) the
+non-water materials changed: 163 masked -> translucent (graffiti, tyre tracks, dirt, ivy, glass, beakers: soft-edged decals),
+141 masked -> opaque (alpha is packed spec/other data, no `alphatest`), 3 additive -> opaque, 1 opaque -> masked.
+
+### The 11 hand-made `MATERIAL_FIXES` (removed)
+
+Checked against the `.mtl`: **8 confirmed, 3 wrong** (ae-story.md section 3). Confirmed: `mat_psc_bio_brain`
+(`sc22_brain_d`), `mat_sc_bathrtile01` (`bdormsc06_floor_d`), `mat_re01_sinkvalve2` (`sc29_sink_d`), `mat_sp_boxing_gloves`
+(`sp_boxing_g_r_d`), `mat_re01_bookshelf` (`sc30_bshelf_d`), and the three winter/autumn overrides `mat_zrc_grasse_swap`
+(`rc_grasse_swap_d`), `mat_zbu_cobroaddirt_swap` (`zbu_cobroaddirt_swap_d_in_grass04`), `mat_zrc_mosspath_swap`
+(`fun_gravedirt1_d`). Wrong: `mat_pr00_drainp` is `black4_d` (+ `pr00_drainp_s`), `mat_mascot_head` is `sp_mascot_h_d`
+(+ `mascot_head_n`), `mat_sc28_tile_01*` is `bdormsc06_floor_d` (+ `sc28_tile_01_n`). `mat_sc22_skelet` also has a `.mtl`
+now read directly. With every material resolved from its `.mtl` the whole table, `_fix_for` and `_apply_fix` were deleted;
+the winter-variant rule (section "winter variants" above) stays in the heuristic fallback. The "art-match" method
+(correlating `_n`/`_s` maps with diffuse luminance) was right every time it was checked, which is a useful sanity check of
+that technique for other assets.
 
 ## Open
 
-- `.mtl` and `.xml` are encrypted; until decoded, a material's true texture slots are inferred from names (section 5).
-- Which season the game shows when: the importer assumes autumn (chapter 1).
+- Additive blending is not stored in the `.mtl`; the glow/beam/halo/chalk decision still uses names (above). Where the engine
+  takes it from (a render state on the model node, the `.msh` flag words) is not decoded.
+- Vector semantics (specular power/strength, water scroll, watermain wave parameters) are inferred from value ranges.
+- Which season the game shows when: the importer assumes autumn (chapter 1); the `.mtl` has no season switch.
 - `.tex` pixel decoding (PVRTC etc.) and `.msh` geometry are separate importers (done: `wtex.py`, `msh.py`).
-- CLI wiring (`--ae-data`) is not added here; `AeArchive(path)` takes the argument, falling back to
+- CLI wiring: `world --ae-data` and the `text` subcommand take the archive path; `AeArchive(path)` falls back to
   `BULLY_AE_DATA`, `local_config.json` `"ae_data"`, then autodetect.

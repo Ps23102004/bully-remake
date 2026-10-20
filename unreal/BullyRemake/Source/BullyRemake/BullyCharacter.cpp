@@ -5,6 +5,7 @@
 #include "BullyCombatAnimInstance.h"
 #include "BullyCombatComponent.h"
 #include "BullyWeaponComponent.h"
+#include "BullyRagdollComponent.h"
 #include "BullyVehicle.h"
 #include "Camera/CameraComponent.h"
 #include "Camera/PlayerCameraManager.h"
@@ -89,6 +90,8 @@ ABullyCharacter::ABullyCharacter()
 	CameraBoom->bUsePawnControlRotation = true;
 	CameraBoom->bDoCollisionTest = true;
 	CameraBoom->ProbeSize = 12.f;
+	// peds never shove the camera: a student walking between the lens and Jimmy collapsed the boom onto his back
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
@@ -97,6 +100,7 @@ ABullyCharacter::ABullyCharacter()
 	// slice-combat: melee for the player (the enemy pawn subclass flips the team)
 	Combat = CreateDefaultSubobject<UBullyCombatComponent>(TEXT("Combat"));
 	Weapons = CreateDefaultSubobject<UBullyWeaponComponent>(TEXT("Weapons"));
+	Ragdoll = CreateDefaultSubobject<UBullyRagdollComponent>(TEXT("Ragdoll"));
 
 	// Placeholder body (engine primitives): shown only when the imported Jimmy assets are missing.
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderFinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
@@ -822,6 +826,8 @@ void ABullyCharacter::BRGo(const FString& Name)
 	{
 		Dest = Hit.Location + FVector(0, 0, 96.f);
 	}
+	if (Ragdoll) { Ragdoll->Abort(); }   // a ragdoll's tick would otherwise drag the capsule straight back to the body
+	LastEntryDoor.Reset();
 	SetActorLocation(Dest, false, nullptr, ETeleportType::TeleportPhysics);
 	GetCharacterMovement()->StopMovementImmediately();
 	SnapCamera();

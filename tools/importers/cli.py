@@ -291,11 +291,38 @@ def cmd_world(a) -> int:
     stems = a.ipb or PRESETS[a.preset]
     try:
         report = build_world(install, a.out, stems, entity_space=not a.file_space,
-                             convert_invisible=a.convert_invisible, ae_data=a.ae_data)
+                             convert_invisible=a.convert_invisible, ae_data=a.ae_data,
+                             keep_overlays=a.keep_overlays)
     except FormatError as ex:
         sys.exit(str(ex))
     print(json.dumps(report, indent=1))
     return 0 if report["models_converted"] else 1
+
+
+def cmd_doors(a) -> int:
+    from . import doors
+    install = resolve_install(a.install)
+    path = a.write or os.path.join(a.out, "doors", "door_links.json")
+    doc = doors.build(install, path)
+    dropped = doc.pop("dropped", [])
+    os.makedirs(os.path.join(a.out, "doors"), exist_ok=True)
+    with open(os.path.join(a.out, "doors", "doors_dropped.json"), "w") as f:
+        json.dump(dropped, f, indent=1)
+    print(json.dumps({"out": path, **doc["stats"], "areas_without_links": doc["areas_without_links"],
+                      "validation": {k: len(v) for k, v in doc["validation"].items()}, "dropped_rows": len(dropped)}, indent=1))
+    return 1 if any(doc["validation"][k] for k in ("exit_outside_area", "exit_inside_own_trigger")) else 0
+
+
+def cmd_text(a) -> int:
+    from . import ae_text
+    from .ae import AeArchive
+    with AeArchive(a.ae_data) as arc:
+        try:
+            doc = ae_text.convert(arc, a.out, a.lang)
+        except FormatError as ex:
+            sys.exit(str(ex))
+    print(json.dumps({k: doc[k] for k in ("tables", "entries_total", "languages", "ui_files", "errors")}, indent=1))
+    return 1 if doc["errors"] else 0
 
 
 def cmd_trigger(a) -> int:
@@ -415,9 +442,24 @@ def main(argv=None) -> int:
     p.add_argument("--ipb", nargs="*", help="explicit IPB stems (overrides --preset)")
     p.add_argument("--file-space", action="store_true", help="keep root/model node transforms in models")
     p.add_argument("--convert-invisible", action="store_true", help="also convert nogo/walkable/_nd markers")
+    p.add_argument("--keep-overlays", action="store_true",
+                   help="also draw the arcade-race mini-game maps (imgracea/b/c), which overlap the school grounds")
     p.add_argument("--ae-data", help="Anniversary Edition data_1.zip (else BULLY_AE_DATA, local_config.json "
                                      '"ae_data", or autodetect); --install is then the extracted data_0 tree')
     p.set_defaults(fn=cmd_world)
+
+    p = sub.add_parser("doors", help="door/teleport links between the town and every interior (Trigger.img DT pairs + "
+                                     "ExitLocs.dat) -> door_links.json (UE schema); see docs/re-notes/ae-town.md")
+    p.add_argument("--write", help="output path (default <out>/doors/door_links.json); "
+                                   "use tools/ue/door_links.json to refresh the file the UE import reads")
+    p.set_defaults(fn=cmd_doors)
+
+    p = sub.add_parser("text", help="AE string tables + subtitle tables (data_1.zip bully/*.xml, Wx cipher) -> <out>/text/<lang>/*.json; "
+                                    "see docs/re-notes/ae-story.md section 3")
+    p.add_argument("--lang", nargs="*", default=["all"], help="en en-GB fr de it es ru ja (default: all)")
+    p.add_argument("--ae-data", help="Anniversary Edition data_1.zip (else BULLY_AE_DATA, local_config.json "
+                                     '"ae_data", or autodetect)')
+    p.set_defaults(fn=cmd_text)
 
     p = sub.add_parser("trigger", help="DAT/Trigger.img mission points, paths, trigger volumes -> JSON (always writes day_one.json)")
     p.add_argument("--list", action="store_true", help="list every .dat with entity counts and warnings, write nothing")

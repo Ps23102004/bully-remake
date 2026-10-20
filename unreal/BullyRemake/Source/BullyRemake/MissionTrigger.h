@@ -28,6 +28,14 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Mission") bool IsPlayerInside() const { return bPlayerInside; }
 
+	/** lane-C: the player was carried through this volume without a tick inside it (an instant door cut): report the entry now
+	 *  (non-interact triggers only). It reads as "inside" for 0.3 s (the mission subsystem polls IsPlayerInside), then the exit is reported as usual. Returns whether an entry was reported.
+	 *  The caller (ABullyDoorLink) only forces triggers the traveller actually touched on the way in (TouchesSegment). */
+	bool ForceEnter();
+
+	/** Does the segment A->B, thickened by `Margin` (a capsule's half extents: radius, radius, half height), touch this box? (slab test in box space) */
+	bool TouchesSegment(const FVector& A, const FVector& B, const FVector& Margin) const;
+
 	/** Test helper: is this world-space point inside the box (box transform and extents)? */
 	bool ContainsPoint(const FVector& WorldPoint) const;
 
@@ -39,4 +47,5 @@ protected:
 
 private:
 	bool bPlayerInside = false;
+	double ForcedUntil = -1.0;   // ForceEnter: stays "inside" until then so the mission tick (level-triggered) can see it
 };

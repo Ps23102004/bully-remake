@@ -6,6 +6,25 @@
 #include "BullyCharacter.h"
 #include "AmbientWalker.generated.h"
 
+/** What an ambient student does when a fight breaks out within AAmbientWalker::BystanderRadius. */
+UENUM()
+enum class EAmbientReact : uint8
+{
+	Ignore,
+	Flee,    // runs away from the fight for FleeSeconds, then goes back to its loop
+	Join,    // takes the other side of the player: the same brawl AI a punched student gets
+};
+
+/** First rule whose Match is a substring of the student id (case-insensitive) decides: "nerd" matches nerd_bucky. */
+USTRUCT()
+struct FAmbientReactRule
+{
+	GENERATED_BODY()
+
+	UPROPERTY(Config, EditAnywhere) FString Match;
+	UPROPERTY(Config, EditAnywhere) EAmbientReact Action = EAmbientReact::Flee;
+};
+
 /**
  * A BullyCharacter (same capsule, movement and C++ locomotion anim instance as Jimmy) that follows `Waypoints` in a
  * loop at its own walk speed and idles a random time at each waypoint. Spawned by UAmbientSubsystem from
@@ -24,7 +43,7 @@
  * in (or touching), the walker pauses YieldPauseSeconds and then side-steps off the player's line for YieldStepSeconds
  * toward whichever side is free; yield time is excluded from the stuck check. Logged as BR_AMBIENT YIELD.
  */
-UCLASS()
+UCLASS(Config = Game)
 class AAmbientWalker : public ABullyCharacter
 {
 	GENERATED_BODY()
@@ -56,6 +75,18 @@ public:
 	/** Scripted-NPC hand-back (UScriptedNPCSubsystem "make ambient"): replaces the loop and starts walking it from `Start`. */
 	void ResumeLoop(const TArray<FVector>& Loop, int32 Start = 0);
 
+	// --- bystanders (lane-C): when a student takes its first hit, every other idle ambient student within BystanderRadius reacts by faction rule.
+	//     Tuning: [/Script/BullyRemake.AmbientWalker] in Config/DefaultGame.ini. Scripted (mission) NPCs never react, so a mission is never derailed.
+	UPROPERTY(Config, EditAnywhere, Category = "Ambient|Bystanders") float BystanderRadius = 1200.f;
+	UPROPERTY(Config, EditAnywhere, Category = "Ambient|Bystanders") float FleeSeconds = 6.f;
+	UPROPERTY(Config, EditAnywhere, Category = "Ambient|Bystanders") EAmbientReact DefaultBystanderReaction = EAmbientReact::Flee;
+	UPROPERTY(Config, EditAnywhere, Category = "Ambient|Bystanders") TArray<FAmbientReactRule> BystanderRules;
+	EAmbientReact GetBystanderReaction() const;
+	bool IsFleeing() const { return bFleeing; }
+	bool IsBrawling() const { return bBrawling; }
+	/** A fight started at `FightPos` against `Threat` (usually the player): this student picks its side. Returns what it did. */
+	EAmbientReact ReactToFight(const FVector& FightPos, const AActor* Threat);
+
 	/** ai-npc (UNPCChatSubsystem): mid-conversation hold — stop walking and face the player until released. */
 	bool bChatHold = false;
 
@@ -67,8 +98,15 @@ protected:
 	 * partner, no tutorial gates/tether). A KO'd walker stays down. Scripted NPCs inherit this: hitting a
 	 * mission bully drops its script and starts the fight.
 	 */
-	void StartBrawl();
+	/** bAlert: tell the students nearby (the first hit a student takes); a student that JOINS a fight does not re-alert, so it never chains. */
+	void StartBrawl(bool bAlert = true);
 	bool bBrawling = false;
+	bool bFleeing = false;
+	double FleeUntil = 0.0;
+	FVector FleeFrom = FVector::ZeroVector;
+	void AlertBystanders();
+	/** Moves the fleeing student; false once it is done (or must fight), so the normal tick takes over. */
+	bool TickFlee(double Now, const FVector& Pos);
 	float BrawlRefHealth = -1.f;
 
 public:

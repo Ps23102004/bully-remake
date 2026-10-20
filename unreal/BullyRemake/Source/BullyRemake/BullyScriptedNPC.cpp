@@ -214,7 +214,7 @@ void ABullyScriptedNPC::Tick(float Dt)
 		if (!bBrawling && C->Health < BrawlRefHealth)
 		{
 			ClearCommands(true);
-			StartBrawl();
+			StartBrawl(false);   // a mission fight never rallies the bystanders (a mission is never derailed)
 		}
 		if (bBrawling || C->GetState() != EBullyCombatState::Idle) { return; }
 	}

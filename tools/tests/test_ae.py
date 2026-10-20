@@ -6,7 +6,7 @@ import zipfile
 
 import pytest
 
-from tools.importers import ae
+from tools.importers import ae, wx
 from tools.importers.binreader import FormatError
 
 TEXTURES = [
@@ -18,11 +18,35 @@ TEXTURES = [
     "conifer_tree01d_swap", "conifer_tree01n_swap",
     "pr00_portapoo1_d", "pr00_portapoo1_d_cs",
     "zbg_rooftop_d", "abacus", "abacus_n", "sc28_tile_01_n",
-    # winter/autumn pairs and the MATERIAL_FIXES targets (a missing stem is ignored, so each fix needs its own)
+    # winter/autumn pair of the heuristic fallback
     "cn_strata_swap_d", "zcn_strata_swap_d_in_grass02", "zcn_strata_swap_s",
-    "zrc_grasse_swap_d", "rc_grasse_swap_d", "zrc_grasse_swap_n_in_grass04", "zrc_grasse_swap_s",
-    "sc22_brain_d", "psc_bio_brain_n", "psc_bio_brain_s",
+    # stems named by the synthetic .mtl files below
+    "k_wall_d", "k_wall_n", "k_wall_s", "k_leaf_d_sp", "k_leaf_n", "k_pane_d", "k_mask", "k_water_d", "k_water_n",
 ]
+
+
+def mtl(effect, tex=(), flags=(), vectors=()):
+    t = "{\n\teffect(effect)=%s,\n\tphysical(physicalmaterial)=,\n" % effect
+    t += "".join("\t%s(bool)=true,\n" % f for f in flags)
+    if tex:
+        t += "\ttextures(orderedarray<texture2d>)=[%d,%s]" % (len(tex), ",".join(tex))
+    if vectors:
+        t += ",\n\tvectors(orderedarray<vector4>)=[%d,%s]" % (len(vectors), ",".join(
+            "{\n\t\tx(float)=%.4f,\n\t\ty(float)=%.4f,\n\t\tz(float)=%.4f,\n\t\tw(float)=%.4f\n\t}" % v for v in vectors))
+    return t + "\n}\n"
+
+
+MTLS = {
+    "mat_k_wall": mtl("bully_normalspec", ["k_wall_d", "k_wall_n", "k_wall_s"], ["doublesided"],
+                      [(1, 1, 1, 1), (8, 0.5, 1, 1)]),
+    # name says leaf, the .mtl says otherwise: the .mtl wins
+    "mat_k_leaf": mtl("bully_normal", ["k_leaf_d_sp", "k_leaf_n"], ["alphatest", "doublesided"]),
+    "mat_k_pane_glass": mtl("bully_diffuse", ["k_pane_d"], ["transparent"], [(1, 1, 1, 0.5)]),
+    "mat_k_mask": mtl("bully_radarmask", ["k_pane_d", "k_mask"]),
+    "mat_k_water": mtl("bully_waterripple", ["k_water_d", "k_water_n"], ["transparent"], [(1, 1, 1, 1), (0.5, 0, 1, 1)]),
+    "mat_k_gone": mtl("bully_normalspec", ["k_wall_d", "k_gone_n", "k_wall_s"]),   # normal map not in the archive
+    "mat_k_flat": mtl("constantcolor", [], [], [(0.2, 0.2, 0.2, 1)]),
+}
 
 
 def msh(materials, ver=7):
@@ -40,6 +64,9 @@ def zpath(tmp_path):
             z.writestr(f"bully/{t}.tex", b"x")
         z.writestr("bully/Fgrd_Sc1B01.msh", msh(["mat_zrc_asphalt_swap_fgrd_sc1b01"]))
         z.writestr("bully/sub/ignored.msh", b"x")
+        for n, txt in MTLS.items():
+            z.writestr(f"bully/{n}.mtl", wx.encode(txt.encode()))
+        z.writestr("bully/mat_not_wx.mtl", b"{ plain text, not Wx }")
     return str(p)
 
 
@@ -120,30 +147,6 @@ def test_winter_variant_loses_to_plain_autumn_texture(arc):
     # with no plain alternative the variant is kept (mat_zrc_mosspath_swap in test_resolve)
 
 
-def test_fix_fills_a_missing_diffuse(arc):
-    r = ae.resolve_material_textures("mat_psc_bio_brain", arc)
-    assert r == {"diffuse": "sc22_brain_d", "normal": "psc_bio_brain_n", "specular": "psc_bio_brain_s",
-                 "rule": "fix:art-match"}
-
-
-def test_forced_fix_replaces_a_snow_texture(arc):
-    # exact match "zrc_grasse_swap_d" is the white winter lawn; the fix points at the green one
-    r = ae.resolve_material_textures("mat_zrc_grasse_swap_fgrd_inground09_a", arc)
-    assert r["diffuse"] == "rc_grasse_swap_d" and r["normal"] == "zrc_grasse_swap_n_in_grass04"
-    assert r["specular"] == "zrc_grasse_swap_s" and r["rule"] == "fix:winter"
-
-
-def test_fix_prefix_matches_on_token_boundaries():
-    assert ae._fix_for("mat_sc28_tile_01_first_floor01")[0] == "mat_sc28_tile_01"
-    assert ae._fix_for("mat_sc28_tile_011")[0] is None
-
-
-def test_every_fix_names_its_evidence():
-    for k, v in ae.MATERIAL_FIXES.items():
-        assert k.startswith("mat_") and "diffuse" in v and v["kind"] in ("art-match", "name", "sibling", "winter")
-        assert v["evidence"]
-
-
 def test_resolve_unresolved_keeps_partial(arc):
     r = ae.resolve_material_textures("mat_sc28_tile_01_first_floor01", arc)
     assert r == {"diffuse": None, "normal": "sc28_tile_01_n", "specular": None, "rule": "unresolved"}
@@ -180,3 +183,50 @@ def test_world_imports_without_numpy():
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     r = subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+def test_parse_mtl():
+    m = ae.parse_mtl(MTLS["mat_k_wall"])
+    assert m["effect"] == "bully_normalspec" and m["textures"] == ["k_wall_d", "k_wall_n", "k_wall_s"]
+    assert m["flags"] == {"doublesided": True, "alphatest": False, "transparent": False, "unlit": False,
+                          "noshadows": False}
+    assert m["vectors"] == [(1.0, 1.0, 1.0, 1.0), (8.0, 0.5, 1.0, 1.0)]
+    assert ae.parse_mtl(MTLS["mat_k_flat"])["textures"] == []
+    with pytest.raises(ValueError):
+        ae.parse_mtl("{ nothing useful }")
+
+
+@pytest.mark.parametrize("effect,n,roles", [
+    ("bully_diffuse", 1, ("diffuse",)), ("bully_spec", 2, ("diffuse", "specular")),
+    ("bully_normal", 2, ("diffuse", "normal")), ("bully_normalspec", 3, ("diffuse", "normal", "specular")),
+    ("bully_normalspeccolor", 3, ("diffuse", "normal", "specular")), ("bully_normaluv", 2, ("diffuse", "normal")),
+    ("bully_waterripple", 2, ("diffuse", "normal")), ("bully_radarmask", 2, ("diffuse", "mask")),
+    ("bully_sky", 1, ("diffuse",)), ("eff_marker", 1, ("diffuse",)), ("bully_future", 3, ("diffuse", "extra", "extra"))])
+def test_effect_roles(effect, n, roles):
+    assert ae.effect_roles(effect, n) == roles
+
+
+def test_mtl_beats_the_name_heuristic(arc):
+    i = ae.material_info("mat_k_leaf", arc)
+    assert (i["diffuse"], i["normal"], i["specular"], i["rule"], i["source"]) == \
+        ("k_leaf_d_sp", "k_leaf_n", None, "mtl", "mtl")
+    assert i["flags"]["alphatest"] and i["effect"] == "bully_normal"
+    # the name would resolve mat_zrc_asphalt_swap_x by drop-suffix; an .mtl-less material still does
+    assert ae.material_info("mat_zrc_asphalt_swap_x", arc)["source"] == "heuristic"
+    assert ae.resolve_material_textures("mat_k_wall", arc) == {
+        "diffuse": "k_wall_d", "normal": "k_wall_n", "specular": "k_wall_s", "rule": "mtl"}
+
+
+def test_mtl_vectors_extra_and_missing_texture(arc):
+    assert ae.material_info("mat_k_wall", arc)["vectors"][1] == (8.0, 0.5, 1.0, 1.0)
+    m = ae.material_info("mat_k_mask", arc)
+    assert m["diffuse"] == "k_pane_d" and m["extra"] == ["k_mask"]
+    g = ae.material_info("mat_k_gone", arc)             # normal missing from the archive -> the role stays empty
+    assert g["normal"] is None and g["diffuse"] == "k_wall_d" and g["missing"] == ["k_gone_n"]
+    flat = ae.material_info("mat_k_flat", arc)
+    assert flat["diffuse"] is None and flat["effect"] == "constantcolor"
+
+
+def test_undecodable_mtl_falls_back(arc):
+    assert ae.read_mtl(arc, "mat_not_wx") is None
+    assert ae.material_info("mat_not_wx", arc)["source"] == "heuristic"

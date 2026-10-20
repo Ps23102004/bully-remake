@@ -3,6 +3,7 @@
 
 #include "BullyCombatAI.h"
 #include "BullyCombatComponent.h"
+#include "BullyScriptedNPC.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "EngineUtils.h"
@@ -30,6 +31,11 @@ void AAmbientWalker::BeginPlay()
 	if (UBullyCombatComponent* C = GetCombat())
 	{
 		C->Team = EBullyCombatTeam::Enemy;
+		if (!IsA<ABullyScriptedNPC>())   // mission NPCs keep the health the mission fights were tuned for
+		{
+			C->MaxHealth = C->EnemyMaxHealth;   // the component sized itself for the Player team in its own BeginPlay; students have enemy health
+			C->Health = C->MaxHealth;
+		}
 	}
 	// walkers pass through each other (both directions, every pair): see the class comment
 	if (UWorld* W = GetWorld())
@@ -58,7 +64,7 @@ void AAmbientWalker::Advance()
 	if (NextIndex == StartIndex % Waypoints.Num()) { ++LoopsCompleted; }
 }
 
-void AAmbientWalker::StartBrawl()
+void AAmbientWalker::StartBrawl(bool bAlert)
 {
 	bBrawling = true;
 	bChatHold = false;
@@ -74,6 +80,82 @@ void AAmbientWalker::StartBrawl()
 		}
 	}
 	UE_LOG(LogAmbient, Display, TEXT("BR_AMBIENT BRAWL %s (%s): dropped its routine, fighting the player"), *GetName(), *StudentId);
+	if (bAlert) { AlertBystanders(); }
+}
+
+EAmbientReact AAmbientWalker::GetBystanderReaction() const
+{
+	const FString Id = StudentId.ToLower();
+	for (const FAmbientReactRule& R : BystanderRules)
+	{
+		if (!R.Match.IsEmpty() && Id.Contains(R.Match.ToLower())) { return R.Action; }
+	}
+	return DefaultBystanderReaction;
+}
+
+EAmbientReact AAmbientWalker::ReactToFight(const FVector& FightPos, const AActor* Threat)
+{
+	UBullyCombatComponent* C = GetCombat();
+	if (bBrawling || bFleeing || !C || C->GetState() != EBullyCombatState::Idle) { return EAmbientReact::Ignore; }
+	const EAmbientReact Act = GetBystanderReaction();
+	if (Act == EAmbientReact::Flee)
+	{
+		bFleeing = true;
+		bChatHold = false;
+		FleeUntil = GetWorld()->GetTimeSeconds() + FleeSeconds;
+		FleeFrom = Threat ? Threat->GetActorLocation() : FightPos;
+		SetScriptedGait(EBullyGait::Run);
+		UE_LOG(LogAmbient, Display, TEXT("BR_AMBIENT BYSTANDER %s (%s): flees the fight for %.0fs"), *GetName(), *StudentId, FleeSeconds);
+	}
+	else if (Act == EAmbientReact::Join)
+	{
+		StartBrawl(false);
+		UE_LOG(LogAmbient, Display, TEXT("BR_AMBIENT BYSTANDER %s (%s): joins the fight"), *GetName(), *StudentId);
+	}
+	return Act;
+}
+
+void AAmbientWalker::AlertBystanders()
+{
+	UWorld* W = GetWorld();
+	if (!W) { return; }
+	const APawn* Player = UGameplayStatics::GetPlayerPawn(W, 0);
+	const FVector Here = GetActorLocation();
+	int32 Fled = 0, Joined = 0, Seen = 0;
+	for (TActorIterator<AAmbientWalker> It(W); It; ++It)
+	{
+		AAmbientWalker* B = *It;
+		if (B == this || B == Player || B->IsA<ABullyScriptedNPC>() || FVector::Dist(B->GetActorLocation(), Here) > B->BystanderRadius) { continue; }
+		++Seen;
+		switch (B->ReactToFight(Here, Player))
+		{
+		case EAmbientReact::Flee: ++Fled; break;
+		case EAmbientReact::Join: ++Joined; break;
+		default: break;
+		}
+	}
+	UE_LOG(LogAmbient, Display, TEXT("BR_AMBIENT BYSTANDERS of %s (%s): %d within %.0f cm -> %d flee, %d join"), *GetName(), *StudentId, Seen, BystanderRadius, Fled, Joined);
+}
+
+bool AAmbientWalker::TickFlee(double Now, const FVector& Pos)
+{
+	UBullyCombatComponent* C = GetCombat();
+	const bool bHit = C && BrawlRefHealth >= 0.f && C->Health < BrawlRefHealth;   // caught: the brawl logic takes over
+	if (Now >= FleeUntil || bHit || (C && C->GetState() != EBullyCombatState::Idle))
+	{
+		bFleeing = false;
+		SetScriptedGait(EBullyGait::Walk);
+		ProgressRefPos = Pos;
+		ProgressRefTime = Now;
+		bIdling = false;
+		return false;
+	}
+	FVector Away = Pos - FleeFrom;
+	Away.Z = 0.f;
+	AddMovementInput(Away.IsNearlyZero() ? -GetActorForwardVector() : Away.GetSafeNormal(), 1.f);
+	ProgressRefPos = Pos;
+	ProgressRefTime = Now;
+	return true;
 }
 
 void AAmbientWalker::ResumeLoop(const TArray<FVector>& Loop, int32 Start)
@@ -176,11 +258,12 @@ void AAmbientWalker::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);   // keeps the scripted gait applied
 	UWorld* W = GetWorld();
-	if (!W || Waypoints.Num() == 0) { return; }
+	if (!W) { return; }
 	const double Now = W->GetTimeSeconds();
 	const FVector Pos = GetActorLocation();
 	PathWalked += FVector::Dist2D(Pos, LastPos);
 	LastPos = Pos;
+	if (bFleeing && TickFlee(Now, Pos)) { return; }   // a student running from a fight (works without a loop too)
 
 	// fight anybody: first health loss abandons the loop for the combat AI; while combat owns the body, no walking
 	if (UBullyCombatComponent* C = GetCombat())
@@ -194,6 +277,7 @@ void AAmbientWalker::Tick(float DeltaSeconds)
 			return;
 		}
 	}
+	if (Waypoints.Num() == 0) { return; }
 
 	if (bChatHold)
 	{

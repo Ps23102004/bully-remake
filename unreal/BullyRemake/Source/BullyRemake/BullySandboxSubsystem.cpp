@@ -2,6 +2,7 @@
 #include "BullySandboxSubsystem.h"
 
 #include "BullyCharacter.h"
+#include "BullyRagdollComponent.h"
 #include "BullyCombatPawn.h"
 #include "BullyCombatTest.h"
 #include "BullyVehicle.h"
@@ -213,6 +214,7 @@ void UBullySandboxSubsystem::Setup(ABullyCharacter* Player)
 	// the player, a few steps back, looking at them
 	const float HalfH = Player->GetCapsuleComponent() ? Player->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : 88.f;
 	const FVector PStand = Center - Fwd * 420.f + FVector(0.f, 0.f, HalfH + 5.f);
+	if (UBullyRagdollComponent* RD = Player->GetRagdoll()) { RD->Abort(); }   // a ragdolled Jimmy would be dragged back to his body
 	Player->SetActorLocationAndRotation(PStand, R, false, nullptr, ETeleportType::TeleportPhysics);
 	if (AController* C = Player->GetController()) { C->SetControlRotation(FRotator(-10.f, Yaw, 0.f)); }
 	Player->SnapCamera();

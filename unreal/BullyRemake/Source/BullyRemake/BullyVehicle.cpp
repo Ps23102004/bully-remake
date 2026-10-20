@@ -3,6 +3,7 @@
 
 #include "BullyCharacter.h"
 #include "BullyCombatComponent.h"
+#include "BullyRagdollComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -525,10 +526,15 @@ void ABullyVehicle::Drive(float Dt)
 				if (!Last || Now - *Last > 1.0)
 				{
 					RecentRunOvers.Add(Other, Now);
-					Victim->ApplyWeaponHit(EBullyHitReaction::Knockdown, FMath::Clamp(FMath::Abs(Speed) / 120.f, 4.f, 25.f));
-					if (ACharacter* VC = Cast<ACharacter>(Other))
+					// lane-C: the ragdoll takes the vehicle's own velocity (a car throws a student far, a bike barely); with no
+					// physics asset on the victim the old capsule launch stays as the fallback.
+					const FVector Away2D = (Other->GetActorLocation() - GetActorLocation()).GetSafeNormal2D();
+					const FVector Throw = (Fwd * FMath::Sign(Speed) * 0.5f + Away2D * 0.5f).GetSafeNormal() * FMath::Clamp(FMath::Abs(Speed) * 0.9f, 350.f, 1600.f) + FVector(0.f, 0.f, 260.f);
+					Victim->ApplyWeaponHit(EBullyHitReaction::Knockdown, FMath::Clamp(FMath::Abs(Speed) / 120.f, 4.f, 25.f), Throw);
+					ABullyCharacter* VC = Cast<ABullyCharacter>(Other);
+					if (VC && !(VC->GetRagdoll() && VC->GetRagdoll()->IsActive()))
 					{
-						VC->LaunchCharacter((VC->GetActorLocation() - GetActorLocation()).GetSafeNormal2D() * 500.f + FVector(0.f, 0.f, 250.f), true, true);
+						VC->LaunchCharacter(Away2D * 500.f + FVector(0.f, 0.f, 250.f), true, true);
 					}
 					++TotalRunOvers;
 					UE_LOG(LogBullyVehicle, Display, TEXT("BR_VEHICLE %s ran into %s at %.0f km/h"), *Def.Name, *Other->GetName(), FMath::Abs(Speed) * 0.036f);

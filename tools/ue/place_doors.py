@@ -28,10 +28,16 @@ def main():
         with open(os.path.join(HERE, "door_links.json"), encoding="utf-8") as f:
             data = json.load(f)
         n = 0
+        ids = {d["id"] for d in data["links"]}
         for d in data["links"]:
-            c = d["trigger"]["center_cm"]
-            h = d["trigger"]["half_extent_cm"]
-            a = eas.spawn_actor_from_class(cls, unreal.Vector(*c), unreal.Rotator(0, 0, 0))
+            if d["partner"] not in ids:
+                raise RuntimeError("door link %s: partner %s missing" % (d["id"], d["partner"]))
+            # "oriented" = the real rotated doorway box (schema door-links/2); older files only have the world AABB
+            t = d["trigger"].get("oriented") or d["trigger"]
+            c = t["center_cm"]
+            h = t["half_extent_cm"]
+            yaw = float(t.get("yaw", 0.0)) if "oriented" in d["trigger"] else 0.0
+            a = eas.spawn_actor_from_class(cls, unreal.Vector(*c), unreal.Rotator(0, 0, yaw))   # Rotator(roll, pitch, yaw)
             a.set_actor_label("BR_Door_" + d["id"])
             a.set_folder_path("Gameplay/Doors")
             a.set_editor_property("link_id", d["id"])

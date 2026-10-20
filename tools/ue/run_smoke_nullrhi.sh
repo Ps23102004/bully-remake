@@ -3,7 +3,8 @@
 # Generic headless smoke: `-game -nullrhi` on the Bullworth map with whatever harness flag(s) you pass; the harness
 # drives itself, logs, and quits the engine on its own (e.g. -BRWeaponSmoke, -BRVehicleSmoke).
 #
-#   tools/ue/run_smoke_nullrhi.sh --flag -BRWeaponSmoke [--flag ...] [--out DIR] [--grep 'BR_WEAPON'] [--seconds-limit 300]
+#   tools/ue/run_smoke_nullrhi.sh --flag -BRWeaponSmoke [--flag ...] [--out DIR] [--grep 'BR_WEAPON'] [--seconds-limit 300] [--ambient]
+#   --ambient keeps the student walkers / ambience on (default adds -BRNoAmbient); needed by -BRPhysicsSmoke.
 #
 # Same engine-safety envelope as the other runners: GPU-slot wrapper, window watchdog (empty window_watch.txt =
 # no-window evidence), no retry, SIGTERM -> 60 s -> SIGKILL. Exit code is the engine's.
@@ -15,6 +16,7 @@ OUT=""
 GREP="BR_"
 LIMIT=300
 LABEL=bully-smoke
+NOAMB="-BRNoAmbient"
 MAP=/Game/Imported/Maps/Bullworth
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -23,6 +25,7 @@ while [ $# -gt 0 ]; do
     --grep) GREP="$2"; shift 2 ;;
     --seconds-limit) LIMIT="$2"; shift 2 ;;
     --label) LABEL="$2"; shift 2 ;;
+    --ambient) NOAMB=""; shift ;;
     *) br_die "unknown argument $1" ;;
   esac
 done
@@ -38,7 +41,7 @@ echo "smoke:$FLAGS -> $OUT"
 START=$(date +%s)
 "$GPU_SLOT" capture --label "$LABEL" -- \
   "$UE_CMD" "$BR_UPROJECT" "$MAP" -game -nullrhi -unattended -nosplash -nocrashreports -NoSound -notraceserver -NoVSync \
-  -stdout -FullStdOutLogOutput -forcelogflush -abslog="$OUT/ue_run.log" -ResX=640 -ResY=360 -windowed -BRNoAmbient \
+  -stdout -FullStdOutLogOutput -forcelogflush -abslog="$OUT/ue_run.log" -ResX=640 -ResY=360 -windowed $NOAMB \
   -UseFixedTimeStep -FPS=60 $FLAGS ${BR_EXTRA_ARGS:-} \
   > "$OUT/stdout.log" 2>&1 &
 WRAP=$!

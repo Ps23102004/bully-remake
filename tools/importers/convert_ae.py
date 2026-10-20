@@ -6,10 +6,15 @@ normals are game space (+Z up, metres) mapped with coords.game_to_gltf, triangle
 order is kept (proper rotation), one node / one mesh per model, one primitive per
 submesh. .msh vertices are already in entity space, so no node transforms exist.
 
-Materials: the .mtl files are encrypted, so the texture slots come from the
-material *name* (ae.resolve_material_textures). Diffuse -> baseColorTexture,
-normal -> normalTexture; the specular stem is recorded in material.extras only.
+Materials: each material's .mtl (Wx-decoded, wx.py) names its effect, texture slots and flags (ae.material_info);
+the name heuristic only fills a slot whose texture is missing. Diffuse -> baseColorTexture, normal -> normalTexture,
+specular -> extras.textures.gloss (the UE master's Gloss slot). Blend mode: alphatest -> masked, transparent ->
+translucent, glow/beam/chalk names that are unlit, transparent, alphatest or diffuse-only sprites -> additive, else opaque. The full .mtl record (effect, flags,
+vectors, specular power/strength, water/uv-scroll markers) is in extras.ae. Docs: docs/re-notes/ae-materials.md.
 Textures are decoded once each to <out>/textures/ae/<stem>.png (wtex).
+
+Opaque materials are two-sided (doubleSided) unless the submesh is modelled back-to-back (BACK_TO_BACK_MAX):
+the game's single-sided shells otherwise vanish when seen from behind (docs/re-notes/ae-interiors.md).
 
 Skinned props (px*) are exported as static meshes: joints/weights are dropped.
 Tangents are dropped (15% unreliable, docs/re-notes/ae-msh.md): viewers regenerate.
@@ -31,7 +36,7 @@ import zlib
 import numpy as np
 
 from . import coords
-from .ae import AeArchive, resolve_material_textures
+from .ae import AeArchive, material_info, resolve_material_textures
 from .binreader import FormatError
 from .convert import ModelResult
 from .gltf import GltfBuilder
@@ -84,13 +89,44 @@ class AeTextureStore:
         return self.exported[stem]
 
 
+# Effects whose vectors[0] is a plain colour/opacity multiplier (the bully_<diffuse|spec|normal|normalspec>[uv|color] family)
+_TINT_EFFECTS = re.compile(r"bully_(diffuse|spec|normal|normalspec)(uv|color)?$")
+_WATER_EFFECTS = ("bully_waterripple", "bully_watermain")
+
+
+def blend_for(mname: str, t: dict, has_alpha: bool, opacity: float) -> str:
+    """Existing blend modes (opaque / masked / additive / translucent) from the .mtl flags. `has_alpha`: the diffuse
+    texture carries an alpha channel. Water layers (bully_waterripple = translucent, bully_watermain = river bed =
+    opaque) fall out of their flags; world.py patch_water_materials still recolours mat_wtr_* by name."""
+    f = t["flags"]
+    if t["source"] == "heuristic":      # no .mtl: INFERRED from names and the texture's alpha (the pre-.mtl rule)
+        if ADDITIVE.search(mname):
+            return "additive"
+        return "masked" if has_alpha and "sp" not in (t["diffuse"] or "").split("_") else "opaque"
+    if ADDITIVE.search(mname) and (f["unlit"] or f["transparent"] or f["alphatest"] or len(t["effect_roles"]) == 1):
+        # light beams, halos, window glows, chalk (alphatest on an alpha-less texture). The .mtl has no additive flag, so a
+        # diffuse-only sprite with a glow name stays additive; a glow-named material with a normal/spec map and no
+        # flag is a lit surface (arcade cabinets, interior window panes) and follows its flags.
+        return "additive"
+    if f["alphatest"] and has_alpha:
+        return "masked"
+    if f["transparent"] and (has_alpha or opacity < 1.0):
+        return "translucent"
+    return "opaque"
+
+
 def _material(mname: str, arc: AeArchive, store: AeTextureStore, gb: GltfBuilder, res: ModelResult,
-              model: str) -> dict:
-    t = resolve_material_textures(mname, arc)
+              model: str, two_sided: bool = True) -> dict:
+    """two_sided: draw opaque faces from both sides (see BACK_TO_BACK_MAX). Masked is always two-sided."""
+    t = material_info(mname, arc)
+    f, vec = t["flags"], t["vectors"]
     out = {"name": mname, "pbrMetallicRoughness": {"baseColorFactor": [1.0, 1.0, 1.0, 1.0],
                                                    "metallicFactor": 0.0, "roughnessFactor": 1.0}}
     pbr = out["pbrMetallicRoughness"]
     textures_meta = {}  # role -> {"uri"}: tools/ue/import_content.py reads this, as for the NIF path
+    tint = opacity = None
+    if t["effect"] and _TINT_EFFECTS.match(t["effect"]) and vec:
+        tint, opacity = list(vec[0][:3]), vec[0][3]
     blend_mode = "opaque"
     if t["diffuse"] is None:
         res.missing_textures.append(f"diffuse:{mname}")
@@ -101,25 +137,72 @@ def _material(mname: str, arc: AeArchive, store: AeTextureStore, gb: GltfBuilder
         else:
             pbr["baseColorTexture"] = {"index": gb.texture("../" + info["path"])}
             textures_meta["base"] = {"ref": t["diffuse"], "uri": "../" + info["path"]}
-            # "_sp" diffuse variants keep specular in alpha: it is not transparency
-            if ADDITIVE.search(mname):
+            blend_mode = blend_for(mname, t, info["has_alpha"], opacity if opacity is not None else 1.0)
+            if blend_mode == "additive":
                 # glTF has no additive mode: BLEND here, extras.blend_mode tells the UE step (as convert.py)
-                blend_mode = "additive"
                 out["alphaMode"] = "BLEND"
-            elif info["has_alpha"] and "sp" not in t["diffuse"].split("_"):
-                blend_mode = "masked"
+            elif blend_mode == "masked":
                 out["alphaMode"] = "MASK"
                 out["alphaCutoff"] = 0.5
                 out["doubleSided"] = True
+            elif blend_mode == "translucent":
+                out["alphaMode"] = "BLEND"
+                if f["doublesided"]:
+                    out["doubleSided"] = True
+    if blend_mode == "opaque" and two_sided:
+        out["doubleSided"] = True
     if t["normal"]:
         info = store.resolve(t["normal"], model)
         if info is not None:
             out["normalTexture"] = {"index": gb.texture("../" + info["path"])}
             textures_meta["normal"] = {"ref": t["normal"], "uri": "../" + info["path"]}
-    out["extras"] = {"blend_mode": blend_mode, "textures": textures_meta,
-                     "ae": {"material": mname, "rule": t["rule"], "diffuse": t["diffuse"],
-                            "normal": t["normal"], "specular": t["specular"]}}
+    if t["specular"] and blend_mode != "additive":
+        info = store.resolve(t["specular"], model)     # the UE master's "Gloss" slot (specular/roughness from .r)
+        if info is not None:
+            textures_meta["gloss"] = {"ref": t["specular"], "uri": "../" + info["path"]}
+    ae = {"material": mname, "rule": t["rule"], "source": t["source"], "effect": t["effect"], "diffuse": t["diffuse"],
+          "normal": t["normal"], "specular": t["specular"], "flags": f}
+    if t["extra"]:
+        ae["extra_textures"] = t["extra"]
+    if vec:
+        ae["vectors"] = [list(v) for v in vec]
+    if t["effect"] and "spec" in t["effect"] and len(vec) >= 2 and t["effect"] not in _WATER_EFFECTS:
+        ae["specular_power"], ae["specular_strength"] = vec[1][0], vec[1][1]   # INFERRED from value ranges
+    if t["effect"] in _WATER_EFFECTS:
+        ae["water"], ae["uv_scroll"] = True, list(vec[1][:2]) if len(vec) > 1 else None
+    elif t["effect"] and t["effect"].endswith("uv"):
+        ae["uv_animated"] = True                       # scrolled at run time; the rate is not in the .mtl
+    out["extras"] = {"blend_mode": blend_mode, "textures": textures_meta, "ae": ae}
+    if tint is not None and (tint != [1.0, 1.0, 1.0] or (opacity < 1.0 and blend_mode == "translucent")):
+        a = opacity if blend_mode == "translucent" else 1.0
+        pbr["baseColorFactor"] = tint + [a]
+        # the UE material instance reads DiffuseTint/alpha from here (import_content.mat_key)
+        out["extras"]["gamebryo"] = {"material": {"diffuse": tint, "alpha": a}}
     return out
+
+
+# The game culls back faces and its shells are single-sided: exterior buildings face out, interior rooms face in
+# (docs/re-notes/ae-interiors.md). Where the original's collision kept the player out, ours did not, and the far
+# side of a wall drew nothing. Opaque materials are therefore exported two-sided (UE flips the normal on the back
+# face, and back faces also cast shadows, which stops sun leaking into the interior pockets). A submesh that the
+# artist already modelled back-to-back (the same triangle twice, opposite winding) stays single-sided: two-sided
+# there would z-fight. Measured on the academy: 53 of 3,514 submeshes have any such pairs, almost all foliage.
+BACK_TO_BACK_MAX = 0.5      # area fraction of back-to-back triangles above which a submesh stays single-sided
+
+
+def back_to_back_fraction(positions, indices) -> float:
+    """Area fraction of triangles whose three corners (to 1 mm) are those of another triangle in the same list."""
+    tri = np.asarray(indices).reshape(-1, 3)
+    if not len(tri):
+        return 0.0
+    p = np.asarray(positions, np.float64)
+    ids = np.unique(np.round(p * 1000).astype(np.int64), axis=0, return_inverse=True)[1].ravel()
+    _, inv, cnt = np.unique(np.sort(ids[tri], axis=1), axis=0, return_inverse=True, return_counts=True)
+    dup = cnt[inv.ravel()] > 1
+    a, b, c = p[tri[:, 0]], p[tri[:, 1]], p[tri[:, 2]]
+    area = 0.5 * np.linalg.norm(np.cross(b - a, c - a), axis=1)
+    total = area.sum()
+    return float(area[dup].sum() / total) if total > 0 else 0.0
 
 
 # ---------------------------------------------------------------------------------------------
@@ -316,7 +399,7 @@ def convert_msh(name: str, data, arc: AeArchive, store: AeTextureStore, out_dir:
         res.skinned_shapes = len({s.part_index for s in m.submeshes if s.weights is not None})
         res.warnings.append("skinned model exported as static (joints and weights dropped)")
     gb = GltfBuilder()
-    mats: dict[str, int] = {}
+    mats: dict[tuple, int] = {}
     prims = []
     bmin = np.full(3, np.inf)
     bmax = np.full(3, -np.inf)
@@ -340,10 +423,11 @@ def convert_msh(name: str, data, arc: AeArchive, store: AeTextureStore, out_dir:
             if uv is not None:
                 attrs[f"TEXCOORD_{k}"] = gb.add_floats(uv.ravel().tolist(), "VEC2")
         key = s.material_name or f"#{s.material}"
-        if key not in mats:
-            mats[key] = gb.material(_material(key, arc, store, gb, res, name))
+        two_sided = back_to_back_fraction(p, s.indices) <= BACK_TO_BACK_MAX
+        if (key, two_sided) not in mats:
+            mats[key, two_sided] = gb.material(_material(key, arc, store, gb, res, name, two_sided))
         prims.append({"attributes": attrs, "indices": gb.add_indices(s.indices.tolist()),
-                      "material": mats[key], "extras": {"part": s.part, "material": key}})
+                      "material": mats[key, two_sided], "extras": {"part": s.part, "material": key}})
         res.shapes += 1
         res.vertices += len(p)
         res.triangles += len(s.indices) // 3

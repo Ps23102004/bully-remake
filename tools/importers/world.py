@@ -35,6 +35,13 @@ ACADEMY = ["tschool", "ischool", "isc_art", "isc_audt", "isc_auto", "isc_bio", "
 # junkyard, BMX park, go-kart track. tGlobal is the always-loaded relief/water, needed by every outdoor area.
 TOWN_OUTDOOR = ["tGlobal", "tbusines", "trich", "tindust", "tcarni", "tjyard", "tBMX", "tgokart"]
 
+# Street-dressing tiles of the rest of the town (lamps, power poles, trees, billboards, benches, props). The PC
+# roster and the AE both ship them in World.img next to zone_school1..6 (docs/re-notes/ae-town.md); they are
+# not listed in world.dat (the game streams them by grid cell), so they are named here. ftest/ttest are
+# developer test scenes and are never imported.
+TOWN_ZONES = ([f"zone_busines{i}" for i in range(1, 9)] + ["zone_carn1"] + [f"zone_indust{i}" for i in range(1, 7)]
+              + [f"zone_rich{i}" for i in range(1, 12)])
+
 # Standalone interiors outside the academy: shops, gym, asylum, observatory, carnival stalls, clique stores, races.
 INTERIORS = ["igrocery", "iboxing", "ibkshop", "icomshp", "icloth_p", "icloth_r", "itenn", "ifunhous",
              "iasylum", "ibarber", "ichem", "iobserv", "iballtos", "isouvnir", "ishoot", "itrailer",
@@ -44,8 +51,8 @@ INTERIORS = ["igrocery", "iboxing", "ibkshop", "icomshp", "icloth_p", "icloth_r"
 PRESETS = {
     "academy": ACADEMY,
     "core": ["tschool", "ischool"],
-    "town": ACADEMY + TOWN_OUTDOOR,          # academy + open-world town (keeps the academy in the manifest)
-    "all": ACADEMY + TOWN_OUTDOOR + INTERIORS,  # the whole world
+    "town": ACADEMY + TOWN_OUTDOOR + TOWN_ZONES,          # academy + open-world town (keeps the academy in the manifest)
+    "all": ACADEMY + TOWN_OUTDOOR + TOWN_ZONES + INTERIORS,  # the whole world
 }
 
 MANIFEST_FORMAT = "bully-remake.scene-manifest/1"
@@ -76,8 +83,13 @@ def is_invisible_marker(name: str) -> bool:
     return n.startswith(("nog_", "nogo_", "walkable_")) or n.endswith("_nd") or "_nd_" in n
 
 
+# Seasonal props the game only shows in the winter chapter (the importer's season is autumn: ae.py WINTER_SUFFIXES).
+# Measured on the town scenes: dl_bu_winteronly02, dl_rc_winteronly02, dl_rcxmaspx, buxmastreepx, fgrd_sc1d_cice.
+WINTER_ONLY = re.compile(r"winteronly|xmas|cice$")
+
+
 def ae_hidden_models(names) -> dict:
-    """AE models that must not draw -> reason (docs/re-notes/ae-materials.md "Hidden models").
+    """AE models that must not draw -> reason (docs/re-notes/ae-materials.md "Hidden models"; winter_only: ae-town.md).
     px*: physics/hit proxies (every px*.msh in data_1.zip is a ~2 m box in the one placeholder
     material mat_sc31_medyellow_pxgbed; the real prop is a separate coincident placement).
     Night variants: "<x>night<k>" / "<x>n<k>" placed beside "<x>day<k>" / "<x>d<k>" (window/screen
@@ -89,12 +101,72 @@ def ae_hidden_models(names) -> dict:
         if s.startswith("px"):
             out[n] = "physics_proxy"
             continue
+        if WINTER_ONLY.search(s):
+            out[n] = "winter_only"
+            continue
         for a, b in (("night", "day"), ("n", "d")):
             day = re.sub(a + r"(\d*)$", b + r"\1", s)
             if day != s and day in low and (a == "night" or "screen" in s or "win" in s):
                 out[n] = "night_variant"
                 break
     return out
+
+
+def hide_duplicate_placements(placements: list) -> int:
+    """Hide exact repeats (same scene, model, position, rotation, scale to 1 mm): coplanar z-fighting copies.
+    The first one stays. Measured: 62 in isc_clas (kiddesk 15, kidchair 10, ...) and none elsewhere (ae-town.md)."""
+    seen, n = set(), 0
+    for p in placements:
+        g = p["game"]
+        k = (p["scene"], p["model"], tuple(round(v, 3) for v in g["position"]),
+             tuple(round(v, 3) for v in g["rotation_xyzw_stored"]), tuple(round(v, 3) for v in g["scale"]))
+        if k in seen:
+            if p["visible"]:
+                p["visible"], p["gltf"], p["hidden_reason"] = False, None, "duplicate_placement"
+                n += 1
+        else:
+            seen.add(k)
+    return n
+
+
+# AE water layers (docs/re-notes/ae-town.md "Water"): every mat_wtr_* texture is dark (max 41..74 of 255) with alpha 255,
+# i.e. a layer the game blends over its own sea/river surface. Converted as opaque they draw the rivers pitch black.
+# base -> a tinted translucent surface (no texture); ripple/shore/caustics -> additive; waterbase (river bed) stays opaque.
+# Tint and opacity are an ESTIMATE (no reference render of the original water).
+WATER_TINT, WATER_ALPHA = [0.06, 0.22, 0.27], 0.78
+
+
+def patch_water_materials(out_dir: str, models: dict) -> int:
+    """Rewrite the materials of converted glTFs whose names are mat_wtr_base*/ripple*/shore*/caustics*. Returns files changed."""
+    changed = 0
+    for info in models.values():
+        if not info.get("gltf"):
+            continue
+        path = os.path.join(out_dir, info["gltf"])
+        with open(path) as f:
+            doc = json.load(f)
+        dirty = False
+        for m in doc.get("materials", []):
+            n = m.get("name", "").lower()
+            ex = m.setdefault("extras", {})
+            if n.startswith("mat_wtr_base"):
+                m["pbrMetallicRoughness"].pop("baseColorTexture", None)
+                m["pbrMetallicRoughness"]["baseColorFactor"] = WATER_TINT + [WATER_ALPHA]   # for plain glTF viewers
+                ex.get("textures", {}).pop("base", None)
+                m["alphaMode"], ex["blend_mode"] = "BLEND", "translucent"
+                ex.setdefault("gamebryo", {})["material"] = {"diffuse": WATER_TINT, "alpha": WATER_ALPHA,
+                                                             "specular": [0.35, 0.35, 0.35]}
+            elif n.startswith(("mat_wtr_ripple", "mat_wtr_shore", "mat_wtr_caustics")):
+                m["alphaMode"], ex["blend_mode"] = "BLEND", "additive"
+            else:
+                continue
+            ex["water_layer"] = n.split("_")[2]
+            dirty = True
+        if dirty:
+            with open(path, "w") as f:
+                json.dump(doc, f)
+            changed += 1
+    return changed
 
 
 def _placement_record(scene: str, p, model: str, gltf: str | None, visible: bool) -> dict:
@@ -124,8 +196,15 @@ def _placement_record(scene: str, p, model: str, gltf: str | None, visible: bool
     }
 
 
+# The three arcade-race mini-game maps are authored at the world origin, stacked in the sky above / on the school
+# playing field (3D overlap with tschool + zone_school2..6 + tGlobal, and with each other; measured, ae-town.md). The
+# game streams one of them in only while its race runs, so a resident map must not draw them.
+MINIGAME_OVERLAYS = ("imgracea", "imgraceb", "imgracec")
+
+
 def build_world(install: str, out_dir: str, ipb_stems: list, entity_space: bool = True,
-                convert_invisible: bool = False, log=print, ae_data: str | None = None) -> dict:
+                convert_invisible: bool = False, log=print, ae_data: str | None = None,
+                keep_overlays: bool = False) -> dict:
     t0 = time.time()
     # Anniversary Edition: placements come from the extracted data_0 tree, models/textures from
     # data_1.zip (.msh/.tex) instead of World.img (.nif/.nft). The PC path below is unchanged.
@@ -160,6 +239,7 @@ def build_world(install: str, out_dir: str, ipb_stems: list, entity_space: bool 
                        "placements": [p.to_json() for p in ipb.placements]}, f, indent=1)
         kind = "interior" if entry.stem.lower().startswith("i") else "exterior"
         scene = {"name": entry.stem, "source": f"World.img/{entry.name}", "kind": kind,
+                 "resident": not (entry.stem.lower() in MINIGAME_OVERLAYS and not keep_overlays),
                  "sections": ipb.section_counts, "placements": len(ipb.placements),
                  "header_unknown_hex": ipb.header_unknown.hex()}
         lo, hi = [float("inf")] * 3, [float("-inf")] * 3
@@ -182,6 +262,8 @@ def build_world(install: str, out_dir: str, ipb_stems: list, entity_space: bool 
                 found = nif_entry
                 canonical = nif_entry.stem if nif_entry else name
             visible = not is_invisible_marker(canonical)
+            overlay = entry.stem.lower() in MINIGAME_OVERLAYS and not keep_overlays
+            visible = visible and not overlay
             if found is None:
                 failures.append({"category": "msh_missing" if ae_arc else "nif_missing", "item": name,
                                  "error": "no .msh in data_1.zip" if ae_arc else "no .nif in World.img"})
@@ -189,6 +271,8 @@ def build_world(install: str, out_dir: str, ipb_stems: list, entity_space: bool 
                 wanted.setdefault(canonical, (ide.txd if ide else None, ide.id if ide else None))
             gltf = f"models/{safe_name(canonical)}.gltf" if found and (visible or convert_invisible) else None
             placements.append(_placement_record(entry.stem, p, canonical, gltf, visible))
+            if overlay:
+                placements[-1]["hidden_reason"] = "minigame_overlay"
             for k in range(3):
                 lo[k] = min(lo[k], p.position[k])
                 hi[k] = max(hi[k], p.position[k])
@@ -203,7 +287,8 @@ def build_world(install: str, out_dir: str, ipb_stems: list, entity_space: bool 
                 p["visible"], p["gltf"], p["hidden_reason"] = False, None, hidden[p["model"]]
                 wanted.pop(p["model"], None)
 
-    log(f"converting {len(wanted)} distinct models ...")
+    n_dup = hide_duplicate_placements(placements)
+    log(f"converting {len(wanted)} distinct models ({n_dup} duplicate placements hidden) ...")
     for i, (name, (txd, ide_id)) in enumerate(sorted(wanted.items(), key=lambda kv: kv[0].lower())):
         try:
             if ae_arc:
@@ -232,6 +317,7 @@ def build_world(install: str, out_dir: str, ipb_stems: list, entity_space: bool 
         }
         if (i + 1) % 100 == 0:
             log(f"  {i + 1}/{len(wanted)} models")
+    n_water = patch_water_materials(out_dir, models) if ae_arc else 0
     # a placement whose model failed to convert has no usable glTF
     for pl in placements:
         if pl["gltf"] and (pl["model"] not in models or models[pl["model"]]["gltf"] is None):
@@ -246,12 +332,18 @@ def build_world(install: str, out_dir: str, ipb_stems: list, entity_space: bool 
             failures.append({"category": "txd_unreadable", "item": txd, "error": err})
 
     textures = sorted(store.exported.values(), key=lambda t: t["path"])
+    # water the AE draws at run time: the *_water models that are empty in the shipped data (sb1_water x21, pg_water09/10,
+    # dl_water08_a, ...) mark where; the UE stage should put a water plane at their z (all 0.0 for the town, ae-town.md)
+    empty = {f["item"] for f in failures if f["category"].endswith("empty_in_source")}
+    water_markers = [{"scene": p["scene"], "model": p["model"], "position": p["game"]["position"]}
+                     for p in placements if p["model"] in empty and "water" in p["model"].lower()]
     manifest = {
         "format": MANIFEST_FORMAT,
         "generated_by": "tools/importers world",
         "coordinate_systems": COORDINATE_DOC,
         "units": {"game": "metre", "gltf": "metre", "ue": "centimetre"},
         "scenes": scenes,
+        "water_markers": water_markers,
         "placements": placements,
         "models": models,
         "textures": textures,
@@ -271,6 +363,10 @@ def build_world(install: str, out_dir: str, ipb_stems: list, entity_space: bool 
     for dirpath, _d, files in os.walk(out_dir):
         for fn in files:
             total_bytes += os.path.getsize(os.path.join(dirpath, fn))
+    hidden_counts: dict[str, int] = {}
+    for p in placements:
+        if p.get("hidden_reason"):
+            hidden_counts[p["hidden_reason"]] = hidden_counts.get(p["hidden_reason"], 0) + 1
     wa = sum(m["winding_agree"] for m in models.values())
     wc = sum(m["winding_checked"] for m in models.values())
     report = {
@@ -290,6 +386,9 @@ def build_world(install: str, out_dir: str, ipb_stems: list, entity_space: bool 
         "models_with_sanitized_nonfinite": sorted(k for k, m in models.items() if m["sanitized_nonfinite"]),
         "winding_agreement": (wa / wc) if wc else None,
         "failures_by_category": by_cat,
+        "duplicate_placements_hidden": n_dup,
+        "hidden_by_reason": hidden_counts,
+        "water_models_patched": n_water,
         "output_bytes": total_bytes,
         "wall_seconds": round(time.time() - t0, 2),
         "manifest": os.path.relpath(manifest_path, out_dir),
