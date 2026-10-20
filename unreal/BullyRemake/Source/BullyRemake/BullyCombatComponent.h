@@ -120,6 +120,11 @@ class UBullyCombatComponent : public UActorComponent
 public:
 	UBullyCombatComponent();
 
+	/** External hit from a weapon/projectile or the environment (no attacker): applies Damage + Reaction, unblockable
+	 *  (a thrown bottle still lands on a guarding target). Goes through the normal victim path, so camera shake, KO,
+	 *  mission events and the health floor all behave as with a melee hit. */
+	void ApplyWeaponHit(EBullyHitReaction Reaction, float Damage);
+
 	// --- tuning (Config) ----------------------------------------------------------------------------------
 	UPROPERTY(Config, EditAnywhere, Category = "Combat|Health") float PlayerMaxHealth = 100.f;
 	UPROPERTY(Config, EditAnywhere, Category = "Combat|Health") float EnemyMaxHealth = 60.f;

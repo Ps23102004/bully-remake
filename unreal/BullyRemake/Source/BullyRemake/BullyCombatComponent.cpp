@@ -773,6 +773,17 @@ void UBullyCombatComponent::ApplyHitTo(UBullyCombatComponent* V, const FBullyCom
 	}
 }
 
+void UBullyCombatComponent::ApplyWeaponHit(EBullyHitReaction Reaction, float Damage)
+{
+	if (!GetOwner() || !GetWorld()) { return; }
+	FBullyCombatMove M;
+	M.Name = TEXT("weapon");
+	M.Reaction = Reaction;
+	M.Damage = Damage;
+	M.bUnblockable = true;   // a thrown bottle / slingshot pellet is not a meleed blow to parry
+	ReceiveHit(nullptr, M, Damage);
+}
+
 UBullyCombatComponent::EHitResult UBullyCombatComponent::ReceiveHit(UBullyCombatComponent* Attacker, const FBullyCombatMove& M, float Damage)
 {
 	if (State == EBullyCombatState::KO) { return EHitResult::Ignored; }
