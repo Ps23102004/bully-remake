@@ -7,7 +7,9 @@ import zipfile
 
 import pytest
 
-from test_msh import make_msh, quad
+import numpy as np
+
+from test_msh import STATIC_DECL, make_msh, part, quad, static_vertex
 from test_wtex import make_tex
 from tools.importers import ae
 from tools.importers.convert_ae import AeTextureStore, convert_msh
@@ -44,3 +46,91 @@ def test_convert_quad(arc, tmp_path):
     assert os.path.isfile(os.path.join(out, "textures/ae/brick_d.png"))
     # tools/ue/import_content.py finds textures only via extras.textures[role].uri
     assert brick["extras"]["textures"]["base"]["uri"] == "../textures/ae/brick_d.png"
+
+
+# -- grass ----------------------------------------------------------------------------------------
+
+def flat_quad(size=20.0, uv_v=2048, normal=(0, 0, 127), plane="xy"):
+    """size x size metre quad; V runs 0..uv_v/2048 along the second axis. plane xy = flat, xz = wall."""
+    corners = [(0, 0), (size, 0), (size, size), (0, size)]
+    uvs = [(0, 0), (2048, 0), (2048, uv_v), (0, uv_v)]
+    pos = [(a, b, 0) if plane == "xy" else (a, 0, b) for a, b in corners]
+    v = [static_vertex(p, normal, uv) for p, uv in zip(pos, uvs)]
+    return part("g:0", v, [0, 1, 2, 0, 2, 3], STATIC_DECL, [(0, 6, 0, 0)], 7)
+
+
+@pytest.fixture
+def grass_arc(tmp_path):
+    p = tmp_path / "data_1.zip"
+    tex = make_tex(0, 2, 2, bytes([40, 90, 30, 255] * 4))
+    with zipfile.ZipFile(p, "w") as z:
+        for t in ("zrc_grasst_swap_d", "rc_grasse_swap_d", "rc_grassz_swap_d", "rc_grasstripz_swap_d", "te03_grass3_d"):
+            z.writestr(f"bully/{t}.tex", tex)
+        z.writestr("bully/fgrd_lawn.msh", make_msh([flat_quad()], materials=("mat_zrc_grasst_swap",)))
+        z.writestr("bully/fgrd_wall.msh", make_msh([flat_quad(plane="xz", normal=(0, 127, 0))],
+                                                    materials=("mat_zrc_grasst_swap",)))
+        z.writestr("bully/fgrd_edge.msh", make_msh([flat_quad()], materials=("mat_zrc_grasse_swap",)))
+        z.writestr("bully/fgrd_plain.msh", make_msh([flat_quad()], materials=("mat_something_else",)))
+    with ae.AeArchive(str(p)) as a:
+        yield a
+
+
+def run_grass(arc, tmp_path, name):
+    out = str(tmp_path / "out")
+    store = AeTextureStore(arc, out)
+    convert_msh(name, arc.read(name, "msh"), arc, store, out)
+    path = os.path.join(out, "grass", f"{name}.grass.json")
+    return out, store, (json.load(open(path)) if os.path.exists(path) else None)
+
+
+def test_grass_class_names():
+    from tools.importers.convert_ae import grass_class
+    assert grass_class("mat_zrc_grasst_swap") == "lawn" and grass_class("mat_zrc_grasseb_swap_fgrd_x") == "lawn"
+    assert grass_class("MAT_ZRC_GRASSE_SWAP") == "edge" and grass_class("mat_zsc_bggrass_swap") == "wild"
+    assert grass_class("mat_te04_grass_01d") == "lawn"
+    assert grass_class("mat_zrc_asphalt_swap") is None and grass_class("mat_zrc_grasstt_swap") is None
+
+
+def test_grass_scatter_density_bounds_and_files(grass_arc, tmp_path):
+    out, store, d = run_grass(grass_arc, tmp_path, "fgrd_lawn")
+    assert d["format"] == "bully-remake.grass/1" and d["tile"] is True and d["area_m2"] == {"lawn": 400.0}
+    assert set(d["tufts"]) == {"clump", "strip"}
+    for tid, dens in (("clump", 1.6), ("strip", 2.2)):
+        t = d["tufts"][tid]
+        rows = np.array(t["rows"]).reshape(-1, 5)
+        assert t["count"] == len(rows) and abs(len(rows) - dens * 400) < 0.15 * dens * 400
+        assert rows[:, 0].min() >= 0 and rows[:, 0].max() <= 2000          # x cm inside the 20 m quad
+        assert rows[:, 1].max() <= 0 and rows[:, 1].min() >= -2000         # UE y = -game y
+        assert set(rows[:, 2]) == {-2}                                     # flat at z 0 minus the 2 cm sink
+        assert rows[:, 3].min() >= 0 and rows[:, 3].max() < 360 and rows[:, 4].min() >= 75 and rows[:, 4].max() <= 130
+        assert all(0.55 <= c <= 1.35 for c in t["tint"])
+    for tid in ("clump", "strip", "dry"):
+        assert validate_gltf(os.path.join(out, "grass", f"tuft_{tid}.gltf")) == []
+    idx = json.load(open(os.path.join(out, "grass", "index.json")))
+    assert idx["models"]["fgrd_lawn"]["instances"] == {k: v["count"] for k, v in d["tufts"].items()}
+    assert idx["models"]["fgrd_lawn"]["file"] == "grass/fgrd_lawn.grass.json" and set(idx["tufts"]) == {"clump", "strip", "dry"}
+    assert os.path.isfile(os.path.join(out, "textures/ae/rc_grassz_swap_d.png"))   # tuft cards are decoded once
+
+
+def test_grass_is_deterministic_and_skips_walls_and_other_materials(grass_arc, tmp_path):
+    _, _, a = run_grass(grass_arc, tmp_path, "fgrd_lawn")
+    _, _, b = run_grass(grass_arc, tmp_path / "again", "fgrd_lawn")
+    assert a == b
+    assert run_grass(grass_arc, tmp_path / "w", "fgrd_wall")[2] is None     # vertical: no grass
+    assert run_grass(grass_arc, tmp_path / "p", "fgrd_plain")[2] is None    # not a grass material
+
+
+def test_grass_edge_strip_is_thinned_at_the_fringe(grass_arc, tmp_path):
+    _, _, d = run_grass(grass_arc, tmp_path, "fgrd_edge")
+    rows = np.array(d["tufts"]["strip"]["rows"]).reshape(-1, 5)
+    v = -rows[:, 1] / 2000.0                  # V = game y / 20 m (quad UV runs 0..1)
+    assert (v < 0.12).sum() == 0 and (v > 0.5).sum() > 0.4 * len(rows)
+    assert len(rows) < 1.6 * 400 * 0.95       # fewer than a lawn quad of the same size would get
+
+
+def test_ae_hidden_models():
+    from tools.importers.world import ae_hidden_models
+    names = ["pxGarb", "scwinnight01", "scwinday01", "autoscreen01n01", "autoscreen01d01",
+             "lawn", "lawd", "nightabl", "armoir", "dl_janscreenn"]
+    assert ae_hidden_models(names) == {"pxGarb": "physics_proxy", "scwinnight01": "night_variant",
+                                       "autoscreen01n01": "night_variant"}

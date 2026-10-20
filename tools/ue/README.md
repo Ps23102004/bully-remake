@@ -390,3 +390,27 @@ landing whose back wall (`ischool_103_BULL2_Banner04`, y=29726) ends a straight 
 3 m wide, 165 -> 550 cm) to the upper floor, which holds the office trigger (-63320, 29140, z 550) and `PrincipalRoom`. The M2
 "landing stop" was `walk_m2.json` walking straight on to (-62860, 29500) into that wall; its target is now on the landing. Pawn
 passes lobby -> office -> out at walk, run and sprint gait; risers (20.6 cm) are well under `MaxStepHeight` 45.
+
+## AE render check (2026-10-20): characters, grass, ray tracing
+
+    tools/ue/run_lineup.sh            # temporary line-up of every imported character in the saved map (tag br_lineup)
+    tools/ue/run_shots.sh --shots <shots.json> --out DIR    # e.g. vantages at game x 333..345, y -73 (road east of the gates)
+    tools/ue/run_lineup.sh --remove   # always remove it again (run_import.sh's level step also clears it)
+
+- Characters: Jimmy (`run_import_character.sh`), the six AmbientLoops students (`run_import_ambient.sh --steps students`;
+  the audio step fails on the AE because `imported/audio/manifest.json` does not exist: AE audio is `.ses` banks,
+  not the PC `.SEA` the decoder reads), the npc_plan peds (`run_import_npc.sh`, needs `BULLY_INSTALL`), `GN_Bully05`
+  with all 439 clips, and the animals `DOG_Pitbull`/`DOG_Doberman`/`DOG_Pitbull2`/`DOG_Pitbull3`/`RAT_PED`
+  (`run_import_character.sh --model M --name M`). Animals have no gameplay consumer yet; `lineup.py` is the only place
+  they are spawned.
+- Grass (`import_grass.py`): HISM components are added through `SubobjectDataSubsystem` (`Actor.add_component_by_class`
+  is not exposed to editor Python in 5.8); the masked masters get the InstancedStaticMeshes usage flag (without it every
+  tuft drew the engine's grey checker material); tuft cards are single-sided with both windings (a two-sided material
+  flips the up normal on the back face and those cards rendered black).
+- Hardware ray tracing (UE 5.8, M3 Pro, METAL_SM6): `r.RayTracing=True`, `r.SkinCache.CompileShaders=True`,
+  `r.Lumen.HardwareRayTracing=True` works - no crash, no errors, log `Ray tracing is enabled (dynamic)`, ~4 min of
+  extra shader compile. Exteriors and the lobby match or beat software Lumen, but the hallways drop from mean
+  luminance 91 to 40 and the gym from 160 to 91: the interior rig (unshadowed channel-1 key + Lumen bounce) relied on
+  software Lumen's distance-field light leakage. `r.RayTracing.Shadows=True` darkened the gate wall and courtyard,
+  and `r.Lumen.HardwareRayTracing.LightingMode=2` changed nothing indoors. The project stays on software Lumen until
+  the interior lighting is re-balanced for HWRT (evidence `~/bully-remake-evidence/ae/hwrt_test/`).

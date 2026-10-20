@@ -76,5 +76,6 @@ Punch-through and translucent colours are common (10.1 M of 72.8 M mip-0 blocks 
   frame DXT5, world map DXT1, radar tile, L8 comic atlas and fonts, title logo, Jimmy portrait): all
   recognisable, text reads left-to-right, no flip, channels correct.
 
-Open: whether `_n` is tangent-space with Z recomputed (the decoded normals look standard +Z-blue); the
+Normals: settled 2026-10-20 (ae-materials.md): D3D convention (green down, as UE), Z consistent, no flip needed. The
+`pp_params` in the header text are import-tool settings, not re-applied. Open: the
 8x8 placeholder textures' intended resolution; fmt 8 as alpha vs luminance (decoded to L,L,L,255).

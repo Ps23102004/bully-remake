@@ -100,8 +100,17 @@ def cmd_nif(a) -> int:
 def cmd_ped(a) -> int:
     from .convert import TextureStore
     from .ide import ModelDefs
-    from .ped import PLAYER_LOCOMOTION, clip_requests, export_ped
+    from .ped import PLAYER_LOCOMOTION, clip_requests, export_ped, load_hxd
     install = resolve_install(a.install)
+    from .ae import detect_ae
+    if a.ae_data or detect_ae(install):   # Anniversary Edition: .msh peds from data_1.zip, clips from the data_0 tree
+        from .ped_ae import export_from_install
+        try:
+            r, textured = export_from_install(install, a)
+        except FormatError as ex:
+            print(f"{a.name}: FAILED {ex}", file=sys.stderr)
+            return 1
+        return _ped_report(a, r, textured)
     with _archive(install, "Stream/World.img") as img:
         defs = ModelDefs.load_install(install)
         e = img.find(a.name + ".nif")
@@ -115,7 +124,7 @@ def cmd_ped(a) -> int:
         if a.no_anims:
             names = []
         try:
-            reqs = clip_requests(install, img, a.group, names) if names else []
+            reqs = clip_requests(install, img, a.group, names, load_hxd(install, a.hxd)) if names else []
             head = None
             if a.head:
                 he = img.find(a.head + ".nif")
@@ -128,7 +137,11 @@ def cmd_ped(a) -> int:
         except FormatError as ex:
             print(f"{a.name}: FAILED {ex}", file=sys.stderr)
             return 1
-    problems = validate_gltf(os.path.join(a.out, r.gltf), check_images=store is not None)
+    return _ped_report(a, r, store is not None)
+
+
+def _ped_report(a, r, textured: bool) -> int:
+    problems = validate_gltf(os.path.join(a.out, r.gltf), check_images=textured)
     out = {"model": r.name, "gltf": r.gltf, "joints": r.joints, "skins": r.skins, "shapes": r.shapes,
            "vertices": r.vertices, "triangles": r.triangles, "max_influences": r.max_influences,
            "unweighted_vertices": r.unweighted_vertices,
@@ -357,7 +370,10 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("ped", help="skinned character (e.g. PLAYER) to glTF with skeleton and .agr clips")
     p.add_argument("name", help="World.img model stem, e.g. PLAYER")
-    p.add_argument("--group", default="C_Player", help="animation group (.agr) for the clips (default C_Player)")
+    p.add_argument("--group", default="C_Player", help="animation group (.agr) for the clips (default C_Player; dogs QPED, rat RAT_PED)")
+    p.add_argument("--hxd", default="MAINPED", help="Anim/<HXD>.HXD holding the group (default MAINPED; the rat: RAT_PED)")
+    p.add_argument("--ae-data", help="Anniversary Edition data_1.zip (else BULLY_AE_DATA / local_config.json / autodetect); "
+                                     "used automatically when --install is the extracted AE data_0 tree")
     p.add_argument("--anims", nargs="*", help="clip names (IDLE, C_PLAYER\\RUN, or * for all); "
                                                "default: Jimmy's locomotion set")
     p.add_argument("--no-anims", action="store_true", help="skeleton and skin only")

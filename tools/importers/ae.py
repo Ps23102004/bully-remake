@@ -5,7 +5,8 @@ The AE keeps its models/textures in `data_1.zip` under `bully/` (flat, lowercase
 `.msh` models, `.tex` textures, `.mtl` materials). The zip is opened read-only and its
 contents are treated as untrusted data: nothing is extracted to disk or executed here.
 
-Format reference and measured rules: docs/re-notes/ae-materials.md.
+Format reference and measured rules: docs/re-notes/ae-materials.md. Seasonal variants ("_wi", "_in_grass0N" are
+snow) and the per-material corrections in MATERIAL_FIXES: docs/re-notes/ae-materials.md, ae-grass.md.
 
 Archive path, in order: explicit argument (--ae-data), $BULLY_AE_DATA,
 tools/importers/local_config.json key "ae_data", then autodetect of the stock
@@ -184,24 +185,75 @@ def _embedded(tex, base: str):
     return None
 
 
-def resolve_material_textures(material_name: str, archive) -> dict:
-    """Map a material name to texture stems: {"diffuse","normal","specular","rule"}.
+WINTER_SUFFIXES = ("_wi", "_in_grass02", "_in_grass04")
+# The shipped archive keeps seasonal variants side by side. Measured by eye and by correlating spec/normal
+# maps with candidate diffuse maps (docs/re-notes/ae-materials.md, ae-grass.md): "<name>_wi" and
+# "<name>_d_in_grass0N" are SNOW-covered winter versions, the plain "<name>_d" is the autumn one.
 
-    `archive` is an AeArchive (or anything with texture_names()). Stems are lowercase archive
-    names without ".tex"; a role with no texture is None. `rule` names the heuristic that
-    found the diffuse texture ("unresolved" if none; normal/specular may still be set).
-    Rules are tried per candidate base, longest first (trailing "_token"s dropped one at a
-    time), so the rule string is "<match>[+z-added|z-stripped][+drop-suffix]".
-    """
-    tex = archive.texture_names()
-    s = material_name.lower()
-    if s.startswith("mat_"):
-        s = s[4:]
+
+def _winter(stem: str) -> bool:
+    return stem.endswith(WINTER_SUFFIXES)
+
+
+# Per-material corrections, keyed by lowercase material-name PREFIX (matched on "_" boundaries, so
+# "mat_sc28_tile_01" also covers "mat_sc28_tile_01_first_floor01"). Each entry: role -> texture stem,
+# "force" (replace a diffuse that did resolve) and the evidence. A stem that is not in the archive is
+# ignored. Evidence "art-match" = the material's own .n/.s map correlates with that diffuse's luminance
+# or relief at |r| >= 0.8 (the maps were baked from the same art); "sibling" = same prop/family,
+# chosen by eye; "name" = the stem is the obvious spelling of the material name. INFERRED, not read
+# from the encrypted .mtl.
+MATERIAL_FIXES = {
+    # missing diffuse (the 16 academy models that used to render white)
+    "mat_psc_bio_brain": {"diffuse": "sc22_brain_d", "kind": "art-match", "evidence": "psc_bio_brain_s r=0.95, _n relief r=0.83"},
+    "mat_pr00_drainp": {"diffuse": "pr_drainp_swap_d", "kind": "art-match", "evidence": "pr00_drainp_s r=0.91"},
+    "mat_sc_bathrtile01": {"diffuse": "bdormsc06_floor_d", "kind": "art-match", "evidence": "sc_bathrtile01_s r=0.94"},
+    "mat_re01_sinkvalve2": {"diffuse": "sc29_sink_d", "kind": "art-match", "evidence": "re01_sinkvalve2_s r=0.87"},
+    "mat_sp_boxing_gloves": {"diffuse": "sp_boxing_g_r_d", "normal": "sp_boxing_g_r_n", "specular": "sp_boxing_g_r_s",
+                             "kind": "name", "evidence": "boxing gloves, red"},
+    "mat_mascot_head": {"diffuse": "mascot_head_brn_d", "specular": "mascot_head_brn_s", "kind": "name", "evidence": "mascot head, brown"},
+    "mat_sc22_skelet": {"diffuse": "psc_bio_skeleton_d", "kind": "sibling", "evidence": "classroom skeleton prop"},
+    "mat_re01_bookshelf": {"diffuse": "sc30_bshelf_d", "kind": "sibling", "evidence": "re01_bookshelf_n has the sc30_bshelf_n shelf layout"},
+    "mat_sc28_tile_01": {"diffuse": "schallfloor01z_d", "kind": "sibling", "evidence": "3x3 hall tile, same layout as sc28_tile_01_n"},
+    # winter/snow textures where the autumn one exists or can be matched
+    "mat_zrc_grasse_swap": {"diffuse": "rc_grasse_swap_d", "normal": "zrc_grasse_swap_n_in_grass04", "force": True, "kind": "winter",
+                            "evidence": "zrc_grasse_swap_d is snow; its normal correlates with rc_grasse_swap_d (r=0.40), not with it"},
+    "mat_zbu_cobroaddirt_swap": {"diffuse": "zbu_cobroaddirt_swap_d_in_grass04", "force": True, "kind": "winter",
+                                 "evidence": "zbu_cobroaddirt_swap_d is snow between the flagstones; the _in_grass04 diffuse is "
+                                             "the same flagstone layout (matches zbu_cobroaddirt_swap_n_in_grass02) without snow"},
+    "mat_zrc_mosspath_swap": {"diffuse": "fun_gravedirt1_d", "force": True,
+                              "kind": "art-match", "evidence": "zrc_mosspath_swap_s r=0.81; the _in_grass02 diffuse is snow"},
+}
+
+
+def _fix_for(name: str):
+    parts = name.split("_")
+    for i in range(len(parts), 1, -1):
+        k = "_".join(parts[:i])
+        if k in MATERIAL_FIXES:
+            return k, MATERIAL_FIXES[k]
+    return None, None
+
+
+def _apply_fix(name: str, res: dict, tex) -> dict:
+    key, fix = _fix_for(name)
+    if not fix or (res["diffuse"] and not fix.get("force")):
+        return res
+    out = dict(res)
+    for role in ROLES:
+        if role in fix and fix[role] in tex:
+            out[role] = fix[role]
+    if out["diffuse"] != res["diffuse"]:
+        out["rule"] = "fix:" + fix["kind"]
+    return out
+
+
+def _resolve(s: str, tex) -> dict:
     toks = s.split("_")
     partial = {}
     for i in range(len(toks), 0, -1):
         base, rest = "_".join(toks[:i]), "_".join(toks[i:])
         forms = [(base, "")] + [(base[1:], "z-stripped") if base.startswith("z") else ("z" + base, "z-added")]
+        found = []
         for b, zr in forms:
             emb = _embedded(tex, b)
             if emb and "diffuse" in emb:
@@ -213,8 +265,37 @@ def resolve_material_textures(material_name: str, archive) -> dict:
                 if how == "variant":
                     how = "variant-suffix"
             if res["diffuse"]:
-                return {**res, "rule": "+".join(x for x in (how, zr, "drop-suffix" if rest else "") if x)}
-            if not partial and (res["normal"] or res["specular"]):
+                found.append((res, how, zr))
+            elif not partial and (res["normal"] or res["specular"]):
                 partial = res
+        if found:
+            # a winter-only variant loses to the plain autumn texture of the z-toggled spelling
+            swapped = False
+            if (len(found) == 2 and found[0][1] == "variant-suffix" and _winter(found[0][0]["diffuse"])
+                    and found[1][1] in ("exact", "model-suffix", "embedded-role")):
+                found, swapped = found[::-1], True
+            res, how, zr = found[0]
+            res = dict(res)
+            if swapped:                              # the winter spelling may carry the maps the plain one lacks
+                for role in ("normal", "specular"):
+                    res[role] = res[role] or found[1][0][role]
+            return {**res, "rule": "+".join(x for x in (how, zr, "drop-suffix" if rest else "") if x)}
     return {"diffuse": None, "normal": partial.get("normal"), "specular": partial.get("specular"),
             "rule": "unresolved"}
+
+
+def resolve_material_textures(material_name: str, archive) -> dict:
+    """Map a material name to texture stems: {"diffuse","normal","specular","rule"}.
+
+    `archive` is an AeArchive (or anything with texture_names()). Stems are lowercase archive
+    names without ".tex"; a role with no texture is None. `rule` names the heuristic that
+    found the diffuse texture ("unresolved" if none; normal/specular may still be set).
+    Rules are tried per candidate base, longest first (trailing "_token"s dropped one at a time), so
+    the rule string is "<match>[+z-added|z-stripped][+drop-suffix]". MATERIAL_FIXES then replaces
+    or fills the roles it names (rule "fix:<evidence kind>").
+    """
+    tex = archive.texture_names()
+    s = material_name.lower()
+    if s.startswith("mat_"):
+        s = s[4:]
+    return _apply_fix(material_name.lower(), _resolve(s, tex), tex)

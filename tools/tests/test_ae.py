@@ -18,6 +18,10 @@ TEXTURES = [
     "conifer_tree01d_swap", "conifer_tree01n_swap",
     "pr00_portapoo1_d", "pr00_portapoo1_d_cs",
     "zbg_rooftop_d", "abacus", "abacus_n", "sc28_tile_01_n",
+    # winter/autumn pairs and the MATERIAL_FIXES targets (a missing stem is ignored, so each fix needs its own)
+    "cn_strata_swap_d", "zcn_strata_swap_d_in_grass02", "zcn_strata_swap_s",
+    "zrc_grasse_swap_d", "rc_grasse_swap_d", "zrc_grasse_swap_n_in_grass04", "zrc_grasse_swap_s",
+    "sc22_brain_d", "psc_bio_brain_n", "psc_bio_brain_s",
 ]
 
 
@@ -106,6 +110,38 @@ def test_detect_ae(tmp_path):
 def test_resolve(arc, mat, diffuse, normal, specular, rule):
     r = ae.resolve_material_textures(mat, arc)
     assert r == {"diffuse": diffuse, "normal": normal, "specular": specular, "rule": rule}
+
+
+def test_winter_variant_loses_to_plain_autumn_texture(arc):
+    # only "zcn_strata_swap_d_in_grass02" (snow) exists under the z spelling; the plain "cn_strata_swap_d" wins
+    r = ae.resolve_material_textures("mat_zcn_strata_swap", arc)
+    assert r["diffuse"] == "cn_strata_swap_d" and r["rule"] == "exact+z-stripped"
+    assert r["specular"] == "zcn_strata_swap_s"
+    # with no plain alternative the variant is kept (mat_zrc_mosspath_swap in test_resolve)
+
+
+def test_fix_fills_a_missing_diffuse(arc):
+    r = ae.resolve_material_textures("mat_psc_bio_brain", arc)
+    assert r == {"diffuse": "sc22_brain_d", "normal": "psc_bio_brain_n", "specular": "psc_bio_brain_s",
+                 "rule": "fix:art-match"}
+
+
+def test_forced_fix_replaces_a_snow_texture(arc):
+    # exact match "zrc_grasse_swap_d" is the white winter lawn; the fix points at the green one
+    r = ae.resolve_material_textures("mat_zrc_grasse_swap_fgrd_inground09_a", arc)
+    assert r["diffuse"] == "rc_grasse_swap_d" and r["normal"] == "zrc_grasse_swap_n_in_grass04"
+    assert r["specular"] == "zrc_grasse_swap_s" and r["rule"] == "fix:winter"
+
+
+def test_fix_prefix_matches_on_token_boundaries():
+    assert ae._fix_for("mat_sc28_tile_01_first_floor01")[0] == "mat_sc28_tile_01"
+    assert ae._fix_for("mat_sc28_tile_011")[0] is None
+
+
+def test_every_fix_names_its_evidence():
+    for k, v in ae.MATERIAL_FIXES.items():
+        assert k.startswith("mat_") and "diffuse" in v and v["kind"] in ("art-match", "name", "sibling", "winter")
+        assert v["evidence"]
 
 
 def test_resolve_unresolved_keeps_partial(arc):

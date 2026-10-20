@@ -135,3 +135,13 @@ Materials named `*glow*`, `*additive*`, `sunbeams` are marked `extras.blend_mode
 Failure categories: `msh_missing`, `msh_convert`, `msh_empty_in_source` (the shipped .msh has no geometry),
 `msh_no_visible_geometry`. Not yet decoded: `.mtl` (3 academy materials without a diffuse texture render untextured),
 tangents (dropped), the specular map (stem kept in `material.extras.ae`). Notes: `docs/re-notes/ae-*.md`.
+
+**AE characters (`ped`, `ped_ae.py`).** On an AE install `ped <MODEL>` reads `bully/<model>.msh` (any case) and writes the
+same `models/<MODEL>.gltf` layout as the PC path (same flags, joint names, clip names, `extras`), so
+`tools/ue/run_import_character.sh` / `run_import_npc.sh` / `run_import_ambient.sh` work unchanged. The skeleton is the
+node hierarchy stored in the .msh (PC names and order: 36 joints `Dummy` .. `ARROW`); the rest pose is the bind pose.
+Clips come from the data_0 tree's `anim/` (same HXD/AGR format as PC). Notes: `docs/re-notes/ae-peds.md`.
+
+    python3 -m tools.importers --install ~/bully-extracted/bullyorig ped PLAYER --anims '*' --root-motion inplace --head B_Buzz
+    python3 -m tools.importers --install ~/bully-extracted/bullyorig ped DOG_Doberman --group QPED --anims '*'
+    python3 -m tools.importers --install ~/bully-extracted/bullyorig ped RAT_PED --hxd RAT_PED --group RAT_PED --anims '*'

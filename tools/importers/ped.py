@@ -46,7 +46,7 @@ import struct
 from dataclasses import dataclass, field
 
 from . import coords
-from .agr import Clip, arrow_displacement, quat_to_rows, rows_to_quat, sample_position, sample_rotation
+from .agr import Clip, quat_to_rows, rows_to_quat, sample_position, sample_rotation
 from .binreader import FormatError
 from .gltf import GltfBuilder
 from .nft import safe_name
@@ -534,12 +534,15 @@ def add_clip(gb: GltfBuilder, joints: list, first_joint_node: int, req: ClipRequ
         raise FormatError(f"{req.label}: {n_tracks} tracks > {len(joints)} joints")
     if n_tracks != len(joints):
         res.warnings.append(f"{req.label}: {n_tracks} tracks for {len(joints)} joints (first {n_tracks} animated)")
-    travel = arrow_displacement(clip, ARROW_TRACK) if n_tracks > ARROW_TRACK else (0.0, 0.0, 0.0)
+    arrow_pos = clip.positions[ARROW_TRACK] if n_tracks > ARROW_TRACK else []
+    if n_tracks <= ARROW_TRACK and n_tracks > ROOT_TRACK:
+        # no ground arrow (the AE rat, 12 tracks): the travel is the Root track's ground-plane motion
+        arrow_pos = [(t, (p[0], p[1], 0.0)) for t, p in clip.positions[ROOT_TRACK]]
+    travel = tuple(b - a for a, b in zip(arrow_pos[0][1], arrow_pos[-1][1])) if len(arrow_pos) > 1 else (0.0, 0.0, 0.0)
     info["root_motion"] = {"travel_game_m": [round(c, 5) for c in travel],
                            "travel_gltf_m": [round(c, 5) for c in vec_game_to_gltf(travel)],
                            "speed_m_s": round(math.sqrt(sum(c * c for c in travel)) / dur, 4) if dur else 0.0,
                            "mode": root_motion}
-    arrow_pos = clip.positions[ARROW_TRACK] if n_tracks > ARROW_TRACK else []
     a0 = arrow_pos[0][1] if arrow_pos else (0.0, 0.0, 0.0)
 
     def arrow_offset(t):

@@ -1,0 +1,79 @@
+{
+ "_note": "Character line-up vantages (tools/ue/run_lineup.sh spawns br_lineup actors on the road east of the gates).",
+ "warmup_seconds": 20,
+ "settle_seconds": 10,
+ "max_compile_wait_seconds": 5400,
+ "quit_after_seconds": 3,
+ "highres_size": [
+  2560,
+  1440
+ ],
+ "exec": [
+  "r.SetRes 2560x1440w",
+  "r.HighResScreenshotDelay 8",
+  "r.MotionBlurQuality 0",
+  "t.MaxFPS 30"
+ ],
+ "shots": [
+  {
+   "name": "lineup_wide",
+   "location_cm": [
+    34500,
+    7300,
+    640
+   ],
+   "look_at_cm": [
+    33300,
+    7300,
+    530
+   ],
+   "fov": 80,
+   "ground_trace": false
+  },
+  {
+   "name": "lineup_animals",
+   "location_cm": [
+    34150,
+    7300,
+    500
+   ],
+   "look_at_cm": [
+    33550,
+    7300,
+    460
+   ],
+   "fov": 65,
+   "ground_trace": false
+  },
+  {
+   "name": "lineup_people_left",
+   "location_cm": [
+    33850,
+    7720,
+    690
+   ],
+   "look_at_cm": [
+    33300,
+    7720,
+    530
+   ],
+   "fov": 75,
+   "ground_trace": false
+  },
+  {
+   "name": "lineup_people_right",
+   "location_cm": [
+    33850,
+    6880,
+    690
+   ],
+   "look_at_cm": [
+    33300,
+    6880,
+    530
+   ],
+   "fov": 75,
+   "ground_trace": false
+  }
+ ]
+}

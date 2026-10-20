@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 
 from . import coords
@@ -61,6 +62,27 @@ def is_invisible_marker(name: str) -> bool:
     'no draw' _nd / _ND_ names."""
     n = name.lower()
     return n.startswith(("nog_", "nogo_", "walkable_")) or n.endswith("_nd") or "_nd_" in n
+
+
+def ae_hidden_models(names) -> dict:
+    """AE models that must not draw -> reason (docs/re-notes/ae-materials.md "Hidden models").
+    px*: physics/hit proxies (every px*.msh in data_1.zip is a ~2 m box in the one placeholder
+    material mat_sc31_medyellow_pxgbed; the real prop is a separate coincident placement).
+    Night variants: "<x>night<k>" / "<x>n<k>" placed beside "<x>day<k>" / "<x>d<k>" (window/screen
+    lighting states drawn at the same spot); the day one is kept."""
+    low = {n.lower() for n in names}
+    out = {}
+    for n in names:
+        s = n.lower()
+        if s.startswith("px"):
+            out[n] = "physics_proxy"
+            continue
+        for a, b in (("night", "day"), ("n", "d")):
+            day = re.sub(a + r"(\d*)$", b + r"\1", s)
+            if day != s and day in low and (a == "night" or "screen" in s or "win" in s):
+                out[n] = "night_variant"
+                break
+    return out
 
 
 def _placement_record(scene: str, p, model: str, gltf: str | None, visible: bool) -> dict:
@@ -161,6 +183,13 @@ def build_world(install: str, out_dir: str, ipb_stems: list, entity_space: bool 
         scene["bounds_game_positions"] = [lo, hi]
         scenes.append(scene)
         log(f"ipb {entry.name}: {len(ipb.placements)} placements {ipb.section_counts}")
+
+    if ae_arc:
+        hidden = ae_hidden_models({p["model"] for p in placements})
+        for p in placements:
+            if p["model"] in hidden:
+                p["visible"], p["gltf"], p["hidden_reason"] = False, None, hidden[p["model"]]
+                wanted.pop(p["model"], None)
 
     log(f"converting {len(wanted)} distinct models ...")
     for i, (name, (txd, ide_id)) in enumerate(sorted(wanted.items(), key=lambda kv: kv[0].lower())):

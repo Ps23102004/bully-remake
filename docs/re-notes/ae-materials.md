@@ -58,9 +58,93 @@ Whole archive (all 6,250 distinct materials): 6,191 resolved (99.1%): exact 4,81
 unresolved are mostly characters/props that ship only `_n`/`_s` (or nothing, e.g. `mat_grey`,
 `mat_sky_*`), so they need the encrypted `.mtl`.
 
+## 2026-10-20: winter variants and the 16 untextured models
+
+The numbers above were taken on an early 298-model academy list. On the full import (900 models, 1,600 distinct
+materials) the first resolver left 10 materials / 16 models without a diffuse and chose snow textures for 6 more.
+`ae.py` now has two additions (tests in `tools/tests/test_ae.py`):
+
+1. **Winter variants lose.** `<name>_wi` and `<name>_d_in_grass0N` are snow versions (see `ae-grass.md` section 2). When
+   the z-spelled name only has such a variant and the plain autumn texture exists under the other spelling, the plain
+   one is taken (`exact+z-stripped`): `zcn_strata_swap` (cliffs; `cn_strata_swap_s` correlates with
+   `cn_strata_swap_d` at r = 0.97), `zrc_bikepath_swap`, `zveg_bush3z_swap`. Over all 6,250 materials 24 change diffuse:
+   13 untextured ones filled by `MATERIAL_FIXES`, 6 by the winter rule, 5 forced by `MATERIAL_FIXES`; 16 of the 1,600
+   academy materials change.
+2. **`MATERIAL_FIXES`** (rule `fix:<kind>`), keyed by material-name prefix, only used when the texture exists:
+
+| material | diffuse | evidence |
+|---|---|---|
+| `mat_psc_bio_brain` | `sc22_brain_d` | art-match: `psc_bio_brain_s` r = 0.95, `_n` relief r = 0.83 |
+| `mat_pr00_drainp` | `pr_drainp_swap_d` | art-match: `pr00_drainp_s` r = 0.91 |
+| `mat_sc_bathrtile01` | `bdormsc06_floor_d` | art-match: `sc_bathrtile01_s` r = 0.94 |
+| `mat_re01_sinkvalve2` | `sc29_sink_d` | art-match: `re01_sinkvalve2_s` r = 0.87; ciphertext window (below) shares most with `mat_sc29_sink` |
+| `mat_sp_boxing_gloves` | `sp_boxing_g_r_d` (+n, s) | name; `_n` relief r = 0.72 |
+| `mat_mascot_head` | `mascot_head_brn_d` (+`_s`) | name only (the head normal does not correlate with either mascot diffuse) |
+| `mat_sc22_skelet` | `psc_bio_skeleton_d` | sibling prop; `sc22_skelet_s` is cloud noise, no match anywhere |
+| `mat_re01_bookshelf` | `sc30_bshelf_d` | sibling: same shelf layout in `re01_bookshelf_n` / `sc30_bshelf_n`; ciphertext window matches `mat_sc30_bshelf` |
+| `mat_sc28_tile_01` (+`_first_floor01`) | `schallfloor01z_d` | sibling: "school hall floor", 3x3 tiles like `sc28_tile_01_n`; no diffuse in the archive correlates with the normal. GUESS (tan/olive tile) |
+| `mat_zrc_grasse_swap` (forced) | `rc_grasse_swap_d` | `zrc_grasse_swap_d` is snow; normal r = 0.40 with `rc_grasse`; ciphertext window matches `mat_rc_grasse_swap` (score 233 vs 181 next) |
+| `mat_zrc_mosspath_swap` (forced) | `fun_gravedirt1_d` | `zrc_mosspath_swap_s` r = 0.81 (snow diffuse only) |
+
+"art-match" works because the shipped `_n`/`_s` maps were baked from the diffuse art: luminance of the diffuse
+correlates with the spec map, and the diffuse's luminance gradient with the normal's xy (brain, drain pipe and bathroom
+tile reach 0.9 and more). A scan of all 14,064 textures at 64 px finds the best diffuse for a spec/normal map.
+
+Result on the full academy import: **1,600 / 1,600 distinct materials resolve a diffuse (was 1,590)**, 0 models
+with a missing texture (was 16). Rules: exact 1,146, exact+drop-suffix 422, embedded-role 12, `fix:*` 12
+(art-match 5, sibling 4, name 2, winter 1), winter-swap 4, variant-suffix 2, bare 2. 877 have a normal, 1,211 a specular.
+
+### Normal maps (verified, no change needed)
+
+Convention: **Direct3D style, green = down, which is what UE expects**; no flip and no Z derivation. Measured over
+3,204 `_n`/`_d` pairs (luminance as height): of the 1,463 strong pairs (|r| > 0.3 on both axes) `n.x` anti-correlates
+with `dL/dx` in 1,384 (95 %), and `n.y` with `dL/drow` (the D3D sign) in 1,098 of those against 286 for the OpenGL
+sign (79 %); on grooved materials (brick, tile, cobble, plank, floor, wall: 366
+pairs, 199 strong) 157 vs 37, median r(x) = -0.33, r(y) = -0.30. `sqrt(1 - x^2 - y^2)` matches the stored blue to 0.017
+median (mean vector length 0.98), so they are ordinary tangent-space maps and TC_NORMALMAP (BC5) is right. The old
+PC note "green channel unverified" is settled for the AE path. Tangents are still dropped (MikkTSpace in UE).
+
+## Hidden models (world.py `ae_hidden_models`, 2026-10-20)
+
+- **px\* physics proxies** (262 academy placements, 33 models): every `px*.msh` in data_1.zip (74 files) is a ~2 m
+  box whose only material is `mat_sc31_medyellow_pxgbed` (4 add two `default` slots). They are hit/rigging proxies;
+  the visible prop is a separate coincident placement (pxgarb + dpe_garbstuff*, pxlad5m + ladder_5m, ...). They were
+  the grey-blue pillars in the AE renders. Placements stay in the manifest with `visible: false`,
+  `hidden_reason: "physics_proxy"`.
+- **Night variants** (17 placements): `<x>night<k>` / `<x>n<k>` screens and windows placed beside their
+  `<x>day<k>` / `<x>d<k>` twin (scwinnight01, dl_ischoolscreenn, gdormscreen01n ...); the day state is kept.
+- Chalk decals `sc_hopscotch`, `sc_tictac`, `sc_soccergoalline` are RGB chalk on black with no alpha: blend mode
+  additive (convert_ae.ADDITIVE) instead of opaque black rectangles.
+
+## 5. `.mtl` / `.xml` cipher (time-boxed attempt, NOT broken)
+
+What is established about the 6,542 `.mtl` (and 338 `.xml`), enough to continue from; scratch scripts were outside the repo.
+
+* Text: `Wx` tag (both types; `x` occurs only at index 1) then 32 symbols `012345689CDEGHKMQRUWXafijlnopsvz`: 5 bits per
+  symbol, packed MSB first over bytes (length = 2 + ceil(8n/5); a one-byte change flips exactly the symbols its bits
+  fall in, checked on the digit at the end of 178 name pairs and 8 alignments).
+* Deterministic and position-keyed: the first 29 symbols are identical in every `.mtl`; the same plaintext change at the
+  same absolute position gives the same symbol pair in every file (246 position/digit/digit groups, 0 violations).
+  So it is a fixed keystream indexed by position, with no per-file nonce.
+* Layout: material name as the last bytes (n-6 is its last byte in 4,919 of 6,542 files) and, for plain materials, three
+  earlier occurrences of the texture stems (diffuse, normal, specular, 11.25 bytes apart).
+* Not XOR with a relabelled alphabet (2,957 distinct (symbol, symbol, xor) triples vs <= 496 possible) and not additive
+  mod 32. The symbol depends on the plaintext group AND on the next group: the variant is "next plaintext value >= a
+  per-position threshold" in 96.7 % of 321 cells, i.e. carry-like, as if a big number were added bytewise. The carry
+  partners form 16 disjoint symbol pairs and the +1 successors 8 four-cycles (`D H 4 3`, `z i 8 R`, ...), which
+  a plain base-32 addition does not give. A per-byte add-with-carry plus a scrambled alphabet fits some of it, not all.
+* The iOS executable has `LC_ENCRYPTION_INFO_64` with `cryptid 1` over one page only (16 KB..20 KB), so most of
+  `__TEXT` is readable: finding the loader that decrypts `.mtl` there is the realistic next step (not attempted).
+* Useful side effect of the determinism: the ciphertext of a material shares long windows with materials that use the
+  same texture stems at the same absolute positions. Best-matching other material (score = sum of -log frequency of
+  the shared symbols, positions 60..L-45): `mat_zrc_grasse_swap` -> `mat_rc_grasse_swap` (233, next 181),
+  `mat_re01_bookshelf` -> `mat_sc30_bshelf` (136, next 115); with the name window included `mat_re01_sinkvalve2_*` ->
+  `mat_sc29_sink`. These agree with the aliases above; the other aliases could not be confirmed this way.
+
 ## Open
 
-- `.mtl` and `.xml` are encrypted; until decoded, a material's true texture slots are inferred from names.
-- `.tex` pixel decoding (PVRTC etc.) and `.msh` geometry are separate importers.
+- `.mtl` and `.xml` are encrypted; until decoded, a material's true texture slots are inferred from names (section 5).
+- Which season the game shows when: the importer assumes autumn (chapter 1).
+- `.tex` pixel decoding (PVRTC etc.) and `.msh` geometry are separate importers (done: `wtex.py`, `msh.py`).
 - CLI wiring (`--ae-data`) is not added here; `AeArchive(path)` takes the argument, falling back to
   `BULLY_AE_DATA`, `local_config.json` `"ae_data"`, then autodetect.
