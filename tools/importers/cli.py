@@ -30,8 +30,9 @@ def resolve_install(arg: str | None) -> str:
     if not path:
         sys.exit("game install not given: pass --install, set BULLY_INSTALL, or create "
                  f"{os.path.relpath(LOCAL_CONFIG)} with {{\"install\": \"...\"}}")
-    if not os.path.isdir(os.path.join(path, "Stream")):
-        sys.exit(f"{path}: not a Bully: Scholarship Edition install (no Stream/ folder)")
+    from .ae import detect_ae
+    if not os.path.isdir(os.path.join(path, "Stream")) and not detect_ae(path):
+        sys.exit(f"{path}: not a Bully install (no Stream/ folder)")
     return path
 
 
@@ -275,8 +276,11 @@ def cmd_world(a) -> int:
     from .world import PRESETS, build_world
     install = resolve_install(a.install)
     stems = a.ipb or PRESETS[a.preset]
-    report = build_world(install, a.out, stems, entity_space=not a.file_space,
-                         convert_invisible=a.convert_invisible)
+    try:
+        report = build_world(install, a.out, stems, entity_space=not a.file_space,
+                             convert_invisible=a.convert_invisible, ae_data=a.ae_data)
+    except FormatError as ex:
+        sys.exit(str(ex))
     print(json.dumps(report, indent=1))
     return 0 if report["models_converted"] else 1
 
@@ -395,6 +399,8 @@ def main(argv=None) -> int:
     p.add_argument("--ipb", nargs="*", help="explicit IPB stems (overrides --preset)")
     p.add_argument("--file-space", action="store_true", help="keep root/model node transforms in models")
     p.add_argument("--convert-invisible", action="store_true", help="also convert nogo/walkable/_nd markers")
+    p.add_argument("--ae-data", help="Anniversary Edition data_1.zip (else BULLY_AE_DATA, local_config.json "
+                                     '"ae_data", or autodetect); --install is then the extracted data_0 tree')
     p.set_defaults(fn=cmd_world)
 
     p = sub.add_parser("trigger", help="DAT/Trigger.img mission points, paths, trigger volumes -> JSON (always writes day_one.json)")

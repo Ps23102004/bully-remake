@@ -117,3 +117,21 @@ Formats and confidence: `docs/re-notes/anim-formats.md`. `ped <MODEL>` writes `m
 the movement code), `raw` (as stored), `dummy` (travel on the root joint, for root-motion extraction).
 Forward in every clip is game +y = glTF -Z; the bind pose itself faces the other way (see the notes).
 `--sheet` renders a CPU contact sheet (bind pose + frames of every clip) as evidence.
+
+## Anniversary Edition (iOS build): `world --ae-data`
+
+Placements still come from the extracted `data_0` tree (`stream/world.img` IPBs, `objects/*.ide`; pass its root as
+`--install`). Models and textures come from `data_1.zip` instead of World.img: `bully/<name>.msh` (`msh.py`),
+`bully/<name>.tex` (`wtex.py`: PVRTC4, DXT, raw formats), material to texture by name (`ae.py`; the `.mtl` files are
+encrypted). The zip is read in place, never extracted. The AE path is used when `--ae-data` is given or the install
+looks like an AE tree (`ae.detect_ae`); otherwise the PC path runs unchanged.
+
+    python3 -m tools.importers --install ~/bully-extracted/bullyorig world --ae-data /path/to/data_1.zip
+    # --ae-data may be omitted: $BULLY_AE_DATA, local_config.json {"ae_data": ...}, or the stock /Applications path
+
+Differences from the PC output: textures land in `textures/ae/<stem>.png` (one dictionary, decoded once each);
+`convert_ae.py` writes the same glTF layout and coordinate mapping as `convert.py`. Skinned props are exported static.
+Materials named `*glow*`, `*additive*`, `sunbeams` are marked `extras.blend_mode: additive` (INFERRED from names).
+Failure categories: `msh_missing`, `msh_convert`, `msh_empty_in_source` (the shipped .msh has no geometry),
+`msh_no_visible_geometry`. Not yet decoded: `.mtl` (3 academy materials without a diffuse texture render untextured),
+tangents (dropped), the specular map (stem kept in `material.extras.ae`). Notes: `docs/re-notes/ae-*.md`.

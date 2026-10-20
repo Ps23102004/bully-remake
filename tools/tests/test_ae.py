@@ -1,0 +1,146 @@
+# OWNER: builder-A (importers)
+"""AE archive access + material->texture resolution, on a synthetic data_1.zip."""
+import os
+import struct
+import zipfile
+
+import pytest
+
+from tools.importers import ae
+from tools.importers.binreader import FormatError
+
+TEXTURES = [
+    "zrc_asphalt_swap_d", "zrc_asphalt_swap_n", "zrc_asphalt_swap_s",
+    "af00_plant02_d", "af00_plant02_s",
+    "sc_mainwall_swap_d_wi", "sc_mainwall_swap_n",
+    "zrc_mosspath_swap_d_in_grass02",
+    "zwillow_barkd_swap", "zwillow_barkn_swap", "zwillow_barks_swap",
+    "conifer_tree01d_swap", "conifer_tree01n_swap",
+    "pr00_portapoo1_d", "pr00_portapoo1_d_cs",
+    "zbg_rooftop_d", "abacus", "abacus_n", "sc28_tile_01_n",
+]
+
+
+def msh(materials, ver=7):
+    b = struct.pack("<7I", ver, 2, 0x539, 0x18, 1, 0, len(materials))
+    for m in materials:
+        b += struct.pack("<I", len(m)) + m.encode()
+    return b + b"\0" * 16
+
+
+@pytest.fixture
+def zpath(tmp_path):
+    p = tmp_path / "data_1.zip"
+    with zipfile.ZipFile(p, "w") as z:
+        for t in TEXTURES:
+            z.writestr(f"bully/{t}.tex", b"x")
+        z.writestr("bully/Fgrd_Sc1B01.msh", msh(["mat_zrc_asphalt_swap_fgrd_sc1b01"]))
+        z.writestr("bully/sub/ignored.msh", b"x")
+    return str(p)
+
+
+@pytest.fixture
+def arc(zpath):
+    with ae.AeArchive(zpath) as a:
+        yield a
+
+
+def test_archive_case_insensitive(arc):
+    assert arc.find("FGRD_SC1B01", "msh") == "bully/Fgrd_Sc1B01.msh"
+    assert arc.find("fgrd_sc1b01.msh") == "bully/Fgrd_Sc1B01.msh"
+    assert arc.find("nope", "msh") is None
+    assert arc.list("msh") == ["fgrd_sc1b01"]          # nested entries are not addressed
+    assert len(arc.list("tex")) == len(TEXTURES)
+    assert ae.msh_materials(arc.read("fgrd_sc1b01", "msh")) == ["mat_zrc_asphalt_swap_fgrd_sc1b01"]
+    with pytest.raises(FormatError):
+        arc.read("missing", "msh")
+
+
+def test_msh_materials_rejects_garbage():
+    with pytest.raises(FormatError):
+        ae.msh_materials(b"\0" * 40)
+    with pytest.raises(FormatError):
+        ae.msh_materials(msh(["mat_a"])[:30])           # truncated name table
+
+
+def test_path_resolution_order(tmp_path, monkeypatch, zpath):
+    cfg = tmp_path / "local_config.json"
+    monkeypatch.setattr(ae, "LOCAL_CONFIG", str(cfg))
+    monkeypatch.delenv("BULLY_AE_DATA", raising=False)
+    monkeypatch.setattr(ae, "_AUTODETECT", [])
+    with pytest.raises(FormatError):
+        ae.resolve_ae_data()
+    cfg.write_text('{"ae_data": "%s"}' % zpath)
+    assert ae.resolve_ae_data() == zpath
+    monkeypatch.setenv("BULLY_AE_DATA", "/env/not/there.zip")
+    with pytest.raises(FormatError):                    # env beats config; missing file is an error
+        ae.resolve_ae_data()
+    assert ae.resolve_ae_data(zpath) == zpath           # argument beats env
+
+
+def test_detect_ae(tmp_path):
+    assert not ae.detect_ae(str(tmp_path))
+    (tmp_path / "stream").mkdir()
+    (tmp_path / "stream" / "world.img").write_bytes(b"")
+    assert not ae.detect_ae(str(tmp_path))
+    (tmp_path / "jumptable.bin").write_bytes(b"")
+    assert ae.detect_ae(str(tmp_path))
+
+
+@pytest.mark.parametrize("mat,diffuse,normal,specular,rule", [
+    ("mat_zrc_asphalt_swap", "zrc_asphalt_swap_d", "zrc_asphalt_swap_n", "zrc_asphalt_swap_s", "exact"),
+    ("mat_zrc_asphalt_swap_fgrd_sc1b01", "zrc_asphalt_swap_d", "zrc_asphalt_swap_n",
+     "zrc_asphalt_swap_s", "exact+drop-suffix"),
+    ("MAT_AF00_Plant02_dpi_planterb", "af00_plant02_d", None, "af00_plant02_s", "exact+drop-suffix"),
+    ("mat_sc_mainwall_swap_ri1d_walls02_a", "sc_mainwall_swap_d_wi", "sc_mainwall_swap_n", None,
+     "variant-suffix+drop-suffix"),
+    ("mat_zrc_mosspath_swap", "zrc_mosspath_swap_d_in_grass02", None, None, "variant-suffix"),
+    ("mat_zwillow_barkd_swap", "zwillow_barkd_swap", "zwillow_barkn_swap", "zwillow_barks_swap",
+     "embedded-role"),
+    ("mat_zconifer_tree01d_swap", "conifer_tree01d_swap", "conifer_tree01n_swap", None,
+     "embedded-role+z-stripped"),
+    ("mat_pr00_portapoo1_cs", "pr00_portapoo1_d_cs", None, None, "model-suffix+drop-suffix"),
+    ("mat_bg_rooftop", "zbg_rooftop_d", None, None, "exact+z-added"),
+    ("mat_abacus", "abacus", "abacus_n", None, "bare"),
+])
+def test_resolve(arc, mat, diffuse, normal, specular, rule):
+    r = ae.resolve_material_textures(mat, arc)
+    assert r == {"diffuse": diffuse, "normal": normal, "specular": specular, "rule": rule}
+
+
+def test_resolve_unresolved_keeps_partial(arc):
+    r = ae.resolve_material_textures("mat_sc28_tile_01_first_floor01", arc)
+    assert r == {"diffuse": None, "normal": "sc28_tile_01_n", "specular": None, "rule": "unresolved"}
+    assert ae.resolve_material_textures("mat_nothing_here", arc)["diffuse"] is None
+
+
+def test_real_install_resolves_academy():
+    try:
+        a = ae.AeArchive()
+    except FormatError:
+        pytest.skip("AE data_1.zip not present")
+    with a:
+        if "fgrd_sc1b01" not in a.list("msh"):
+            pytest.skip("unexpected archive contents")
+        mats = ae.msh_materials(a.read("fgrd_sc1b01", "msh"))
+        got = [ae.resolve_material_textures(m, a)["diffuse"] for m in mats]
+        assert sum(g is not None for g in got) >= 0.9 * len(got)
+
+
+def test_corrupt_zip_entry_is_format_error(tmp_path):
+    p = tmp_path / "bad.zip"
+    with zipfile.ZipFile(p, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("bully/a.tex", b"hello" * 100)
+    raw = bytearray(p.read_bytes())
+    raw[40:48] = b"\xff" * 8                      # corrupt the deflate stream
+    p.write_bytes(raw)
+    with ae.AeArchive(str(p)) as a, pytest.raises(FormatError):
+        a.read("a", "tex")
+
+
+def test_world_imports_without_numpy():
+    import subprocess, sys
+    code = "import sys; sys.modules['numpy']=None; import tools.importers.world"
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    r = subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr

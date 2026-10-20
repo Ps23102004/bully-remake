@@ -20,6 +20,7 @@ import time
 
 from . import coords
 from .binreader import FormatError
+from .ae import detect_ae
 from .convert import TextureStore, convert_model
 from .ide import ModelDefs
 from .img import ImgArchive
@@ -90,12 +91,20 @@ def _placement_record(scene: str, p, model: str, gltf: str | None, visible: bool
 
 
 def build_world(install: str, out_dir: str, ipb_stems: list, entity_space: bool = True,
-                convert_invisible: bool = False, log=print) -> dict:
+                convert_invisible: bool = False, log=print, ae_data: str | None = None) -> dict:
     t0 = time.time()
+    # Anniversary Edition: placements come from the extracted data_0 tree, models/textures from
+    # data_1.zip (.msh/.tex) instead of World.img (.nif/.nft). The PC path below is unchanged.
+    ae_arc = None
+    if ae_data or detect_ae(install):
+        # lazy: the AE decoders need numpy; the PC path must keep working without it
+        from .ae import AeArchive
+        from .convert_ae import AeTextureStore, convert_msh
+        ae_arc = AeArchive(ae_data)
     os.makedirs(out_dir, exist_ok=True)
     img = ImgArchive(os.path.join(install, "Stream", "World.img"))
     defs = ModelDefs.load_install(install)
-    store = TextureStore(img, out_dir)
+    store = AeTextureStore(ae_arc, out_dir) if ae_arc else TextureStore(img, out_dir)
     scenes, placements, failures = [], [], []
     models: dict[str, dict] = {}
     wanted: dict[str, tuple] = {}  # canonical model name -> (txd, ide id)
@@ -131,14 +140,20 @@ def build_world(install: str, out_dir: str, ipb_stems: list, entity_space: bool 
             elif ide.id != p.model_id:
                 failures.append({"category": "ide_id_mismatch", "item": f"{entry.stem}#{p.index}:{name}",
                                  "error": f"placement id {p.model_id} != IDE id {ide.id}"})
-            nif_entry = img.find(name + ".nif")
-            canonical = nif_entry.stem if nif_entry else name
+            if ae_arc:
+                found = ae_arc.find(name, "msh")
+                canonical = os.path.splitext(os.path.basename(found))[0] if found else name
+            else:
+                nif_entry = img.find(name + ".nif")
+                found = nif_entry
+                canonical = nif_entry.stem if nif_entry else name
             visible = not is_invisible_marker(canonical)
-            if nif_entry is None:
-                failures.append({"category": "nif_missing", "item": name, "error": "no .nif in World.img"})
+            if found is None:
+                failures.append({"category": "msh_missing" if ae_arc else "nif_missing", "item": name,
+                                 "error": "no .msh in data_1.zip" if ae_arc else "no .nif in World.img"})
             elif visible or convert_invisible:
                 wanted.setdefault(canonical, (ide.txd if ide else None, ide.id if ide else None))
-            gltf = f"models/{safe_name(canonical)}.gltf" if nif_entry and (visible or convert_invisible) else None
+            gltf = f"models/{safe_name(canonical)}.gltf" if found and (visible or convert_invisible) else None
             placements.append(_placement_record(entry.stem, p, canonical, gltf, visible))
             for k in range(3):
                 lo[k] = min(lo[k], p.position[k])
@@ -149,13 +164,19 @@ def build_world(install: str, out_dir: str, ipb_stems: list, entity_space: bool 
 
     log(f"converting {len(wanted)} distinct models ...")
     for i, (name, (txd, ide_id)) in enumerate(sorted(wanted.items(), key=lambda kv: kv[0].lower())):
-        e = img.find(name + ".nif")
         try:
-            r = convert_model(e.stem, img.read_entry(e), txd, store, out_dir, entity_space=entity_space)
+            if ae_arc:
+                r = convert_msh(name, ae_arc.read(name, "msh"), ae_arc, store, out_dir)
+            else:
+                e = img.find(name + ".nif")
+                r = convert_model(e.stem, img.read_entry(e), txd, store, out_dir, entity_space=entity_space)
         except FormatError as ex:
-            failures.append({"category": "nif_convert", "item": name, "error": str(ex)})
+            failures.append({"category": "msh_convert" if ae_arc else "nif_convert", "item": name, "error": str(ex)})
             continue
-        if r.gltf is None:
+        if r.gltf is None and ae_arc:
+            failures.append({"category": "msh_empty_in_source" if r.empty_source else "msh_no_visible_geometry",
+                             "item": name, "error": "; ".join(r.warnings)})
+        elif r.gltf is None:
             # empty_source: the shipped NIF has no geometry at all (e.g. the
             # DCL_* decal holders); that is the game data, not a parse fault.
             cat = "nif_empty_in_source" if r.empty_source else "nif_no_visible_geometry"
@@ -232,6 +253,10 @@ def build_world(install: str, out_dir: str, ipb_stems: list, entity_space: bool 
         "wall_seconds": round(time.time() - t0, 2),
         "manifest": os.path.relpath(manifest_path, out_dir),
     }
+    if ae_arc:
+        report["edition"] = "anniversary"
+        report["ae_data"] = ae_arc.path
+        ae_arc.close()
     with open(os.path.join(out_dir, "report.json"), "w") as f:
         json.dump(report, f, indent=1)
     img.close()
