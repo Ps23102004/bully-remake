@@ -81,6 +81,14 @@
    ],
    "scene": "isc_art"
   },
+  "asylum": {
+   "location_cm": [
+    -73334.6,
+    -48116.1,
+    288.0
+   ],
+   "scene": "iasylum"
+  },
   "audt": {
    "location_cm": [
     -76966.0,
@@ -96,6 +104,22 @@
     8206.2
    ],
    "scene": "isc_auto"
+  },
+  "balltoss": {
+   "location_cm": [
+    -79488.4,
+    -9249.7,
+    1272.1
+   ],
+   "scene": "iballtos"
+  },
+  "barber": {
+   "location_cm": [
+    -65550.2,
+    -12680.3,
+    415.6
+   ],
+   "scene": "ibarber"
   },
   "bio": {
    "location_cm": [
@@ -113,6 +137,22 @@
    ],
    "scene": "isc_boil"
   },
+  "bookshop": {
+   "location_cm": [
+    -78563.3,
+    -38150.8,
+    112.6
+   ],
+   "scene": "ibkshop"
+  },
+  "boxing": {
+   "location_cm": [
+    -72057.1,
+    -38269.4,
+    29509.7
+   ],
+   "scene": "iboxing"
+  },
   "chem": {
    "location_cm": [
     -59640.0,
@@ -120,6 +160,14 @@
     3542.0
    ],
    "scene": "isc_chem"
+  },
+  "chemist": {
+   "location_cm": [
+    -76179.0,
+    -7988.7,
+    -487.6
+   ],
+   "scene": "ichem"
   },
   "clas": {
    "location_cm": [
@@ -129,6 +177,30 @@
    ],
    "scene": "isc_clas"
   },
+  "clothes_p": {
+   "location_cm": [
+    -64758.7,
+    -26153.9,
+    212.2
+   ],
+   "scene": "icloth_p"
+  },
+  "clothes_r": {
+   "location_cm": [
+    -70495.8,
+    -26276.4,
+    119.6
+   ],
+   "scene": "icloth_r"
+  },
+  "comics": {
+   "location_cm": [
+    -72634.0,
+    -3166.8,
+    -116.5
+   ],
+   "scene": "icomshp"
+  },
   "dorm": {
    "location_cm": [
     -49933.8,
@@ -136,6 +208,22 @@
     3260.1
    ],
    "scene": "isc_dorm"
+  },
+  "freakshow": {
+   "location_cm": [
+    -46349.3,
+    5248.6,
+    1018.7
+   ],
+   "scene": "ifreaks"
+  },
+  "funhouse": {
+   "location_cm": [
+    -73594.0,
+    42645.6,
+    908.2
+   ],
+   "scene": "ifunhous"
   },
   "gdrm": {
    "location_cm": [
@@ -145,6 +233,14 @@
    ],
    "scene": "isc_Gdrm"
   },
+  "grocery": {
+   "location_cm": [
+    -57368.9,
+    -39070.4,
+    109.4
+   ],
+   "scene": "igrocery"
+  },
   "lib": {
    "location_cm": [
     -77229.3,
@@ -153,6 +249,14 @@
    ],
    "scene": "isc_lib"
   },
+  "observatory": {
+   "location_cm": [
+    -69646.0,
+    -7546.6,
+    2135.6
+   ],
+   "scene": "iobserv"
+  },
   "offi": {
    "location_cm": [
     -70128.5,
@@ -160,6 +264,14 @@
     3306.8
    ],
    "scene": "isc_offi"
+  },
+  "pirate_barber": {
+   "location_cm": [
+    -66793.0,
+    -38749.2,
+    353.5
+   ],
+   "scene": "ipbarb"
   },
   "pool": {
    "location_cm": [
@@ -177,6 +289,54 @@
    ],
    "scene": "isc_prep"
   },
+  "race_a": {
+   "location_cm": [
+    -13.6,
+    -234.6,
+    287.6
+   ],
+   "scene": "iMGRaceA"
+  },
+  "race_b": {
+   "location_cm": [
+    -7309.5,
+    483.3,
+    120.0
+   ],
+   "scene": "iMGRaceB"
+  },
+  "race_c": {
+   "location_cm": [
+    -10.2,
+    -0.0,
+    1022.3
+   ],
+   "scene": "iMGRaceC"
+  },
+  "salon": {
+   "location_cm": [
+    -76665.2,
+    -2336.0,
+    406.2
+   ],
+   "scene": "isalon"
+  },
+  "shooting": {
+   "location_cm": [
+    -83259.7,
+    -7005.1,
+    1194.8
+   ],
+   "scene": "ishoot"
+  },
+  "souvenir": {
+   "location_cm": [
+    -78740.0,
+    -5107.5,
+    848.3
+   ],
+   "scene": "isouvnir"
+  },
   "staf": {
    "location_cm": [
     -64937.4,
@@ -184,6 +344,62 @@
     79.6
    ],
    "scene": "isc_staf"
+  },
+  "store_dropout": {
+   "location_cm": [
+    -66217.0,
+    -25484.2,
+    1635.8
+   ],
+   "scene": "iDropS"
+  },
+  "store_greaser": {
+   "location_cm": [
+    -69772.6,
+    -34892.8,
+    439.3
+   ],
+   "scene": "iGrsrS"
+  },
+  "store_jock": {
+   "location_cm": [
+    -74668.3,
+    -35274.3,
+    469.2
+   ],
+   "scene": "iJockS"
+  },
+  "store_prep": {
+   "location_cm": [
+    -77727.7,
+    -35551.7,
+    756.8
+   ],
+   "scene": "iPrepS"
+  },
+  "tennis": {
+   "location_cm": [
+    -52919.5,
+    3297.5,
+    3207.2
+   ],
+   "scene": "itenn"
+  },
+  "trailer": {
+   "location_cm": [
+    -65589.4,
+    -8190.8,
+    224.6
+   ],
+   "scene": "itrailer"
+  },
+  "warehouse": {
+   "location_cm": [
+    -62204.7,
+    15747.5,
+    100.0
+   ],
+   "scene": "iware"
   }
  }
 }
